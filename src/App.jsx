@@ -17,10 +17,13 @@ const App = () => {
   // --- NEW STATE: Tracks the member currently in the renewal modal ---
   const [renewalClient, setRenewalClient] = useState(null);
   const [renewalPlan, setRenewalPlan] = useState('basic'); // State for selected renewal plan
+  const [renewalStartOption, setRenewalStartOption] = useState('auto');
   // -------------------------------------------------------------------
 
-  const [memberFilter, setMemberFilter] = useState('all'); // 'all', 'active', or 'expired'
-
+  const [memberFilter, setMemberFilter] = useState('all');// 'all', 'active', or 'expired'
+  const [selectedMember, setSelectedMember] = useState(null); // For viewing member details
+const [showMemberDetails, setShowMemberDetails] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(''); // Search functionality
   // --- 1. MEMBERSHIP DATA ---
   const membershipFees = { basic: 2000, premium: 5000, platinum: 9000, annual: 16000 };
   const membershipMonths = { basic: 1, premium: 3, platinum: 6, annual: 12 };
@@ -54,27 +57,56 @@ const App = () => {
     const { data, error } = await supabase
       .from('members')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('name', { ascending: true }); // Sort alphabetically by name
     
     if (error) throw error;
     
     // Map database column names to your app's field names
-    const mappedData = (data || []).map(member => ({
-      id: member.id,
-      name: member.name,
-      phone: member.phone,
-      email: member.email,
-      address: member.address,
-      age: member.age,
-      gender: member.gender,
-      emergencyContact: member.emergency_contact,
-      membership: member.membership,
-      startDate: member.start_date,
-      endDate: member.end_date,
-      fee: member.fee,
-      discount: member.discount,
-      status: member.status
-    }));
+    const mappedData = (data || []).map(member => {
+  // Auto-calculate status based on end date
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const endDate = new Date(member.end_date);
+  endDate.setHours(0, 0, 0, 0);
+  
+  const calculatedStatus = today <= endDate ? 'active' : 'expired';
+  
+  return {
+    id: member.id,
+    name: member.name,
+    phone: member.phone,
+    email: member.email,
+    address: member.address,
+    age: member.age,
+    gender: member.gender,
+    emergencyContact: member.emergency_contact,
+    membership: member.membership,
+    startDate: member.start_date,
+    endDate: member.end_date,
+    joinDate: member.join_date || member.start_date,
+    fee: member.fee,
+    discount: member.discount,
+    status: calculatedStatus, // Use calculated status instead of database status
+      holdStatus: member.hold_status || 'active',
+      holdStartDate: member.hold_start_date,
+      holdEndDate: member.hold_end_date,
+      paymentHistory: member.payment_history || []
+  };
+    });
+    
+  // Update status in database if changed
+  const statusUpdates = mappedData
+    .filter(member => member.status !== data.find(d => d.id === member.id).status)
+    .map(member => 
+      supabase
+        .from('members')
+        .update({ status: member.status })
+        .eq('id', member.id)
+    );
+  
+  if (statusUpdates.length > 0) {
+    await Promise.all(statusUpdates);
+  }
     
     setClients(mappedData);
     calculateStats(mappedData);
@@ -106,10 +138,11 @@ const App = () => {
   };
 
   // --- NEW: Function to open the renewal modal ---
-  const openRenewalModal = (client) => {
-    setRenewalClient(client);
-    setRenewalPlan(client.membership); // Pre-select their previous plan
-  };
+ const openRenewalModal = (client) => {
+  setRenewalClient(client);
+  setRenewalPlan(client.membership);
+  setRenewalStartOption('auto'); // Reset to auto
+};
   // ------------------------------------------------
 
   // --- UPDATED: Function to handle renewal submission ---
@@ -120,11 +153,49 @@ const App = () => {
   try {
     const renewalMonths = membershipMonths[renewalPlan];
     const renewalFee = membershipFees[renewalPlan];
-    const newStartDate = new Date().toISOString().split('T')[0];
-    const newEndDate = new Date();
+    
+    const today = new Date();
+    const oldEndDate = new Date(renewalClient.endDate);
+    
+    // Calculate days since expiry
+    const daysSinceExpiry = Math.floor((today - oldEndDate) / (1000 * 60 * 60 * 24));
+    
+    let newStartDate, renewalType;
+    
+    // Determine start date based on user selection
+    if (renewalStartOption === 'from_today') {
+      newStartDate = today.toISOString().split('T')[0];
+      renewalType = 'Renewal (Started from today)';
+    } else if (renewalStartOption === 'from_expiry') {
+      newStartDate = oldEndDate.toISOString().split('T')[0];
+      renewalType = 'Renewal (Continued from expiry)';
+    } else {
+      // Auto mode: If expired for more than 7 days, start from today
+      if (daysSinceExpiry > 7) {
+        newStartDate = today.toISOString().split('T')[0];
+        renewalType = 'Renewal (Started from today)';
+      } else {
+        newStartDate = oldEndDate.toISOString().split('T')[0];
+        renewalType = 'Renewal (Continued from expiry)';
+      }
+    }
+    
+    const newEndDate = new Date(newStartDate);
     newEndDate.setMonth(newEndDate.getMonth() + renewalMonths);
 
-    // Update in Supabase
+    const newTotalFee = (renewalClient.fee || 0) + renewalFee;
+
+    const newPayment = {
+      date: new Date().toISOString(),
+      amount: renewalFee,
+      membership: renewalPlan,
+      type: renewalType,
+      startDate: newStartDate,
+      endDate: newEndDate.toISOString().split('T')[0]
+    };
+
+    const updatedPaymentHistory = [...(renewalClient.paymentHistory || []), newPayment];
+
     const { error } = await supabase
       .from('members')
       .update({
@@ -132,17 +203,16 @@ const App = () => {
         start_date: newStartDate,
         end_date: newEndDate.toISOString().split('T')[0],
         membership: renewalPlan,
-        fee: renewalFee
+        fee: newTotalFee,
+        payment_history: updatedPaymentHistory
       })
       .eq('id', renewalClient.id);
 
     if (error) throw error;
 
-    // Close modal and notify user
-    alert(`Subscription renewed for ${renewalClient.name} with the ${renewalPlan.toUpperCase()} plan! (Rs ${renewalFee.toLocaleString('en-IN')})`);
+    alert(`Subscription renewed for ${renewalClient.name}!\n\nPlan: ${renewalPlan.toUpperCase()}\nRenewal Fee: Rs ${renewalFee.toLocaleString('en-IN')}\nTotal Revenue: Rs ${newTotalFee.toLocaleString('en-IN')}\nNew Period: ${newStartDate} to ${newEndDate.toISOString().split('T')[0]}`);
     setRenewalClient(null);
     
-    // Reload data from Supabase
     fetchClients();
   } catch (error) {
     console.error('Error renewing subscription:', error);
@@ -151,7 +221,78 @@ const App = () => {
     setLoading(false);
   }
 };
+//new
+const handleHoldMembership = async (client) => {
+  if (!window.confirm(`Put ${client.name}'s membership on hold?\n\nTheir membership expiry will be paused.`)) {
+    return;
+  }
 
+  setLoading(true);
+  try {
+    const holdStartDate = new Date().toISOString().split('T')[0];
+
+    const { error } = await supabase
+      .from('members')
+      .update({
+        hold_status: 'on_hold',
+        hold_start_date: holdStartDate
+      })
+      .eq('id', client.id);
+
+    if (error) throw error;
+
+    alert(`Membership put on hold for ${client.name}`);
+    fetchClients();
+  } catch (error) {
+    console.error('Error holding membership:', error);
+    alert('Error: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleContinueMembership = async (client) => {
+  if (!window.confirm(`Resume ${client.name}'s membership?\n\nExpiry date will be extended by the hold duration.`)) {
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const holdStartDate = new Date(client.holdStartDate);
+    const today = new Date();
+    const holdDays = Math.floor((today - holdStartDate) / (1000 * 60 * 60 * 24));
+
+    // Extend end date by hold duration
+    const currentEndDate = new Date(client.endDate);
+    const newEndDate = new Date(currentEndDate);
+    newEndDate.setDate(newEndDate.getDate() + holdDays);
+
+    const { error } = await supabase
+      .from('members')
+      .update({
+        hold_status: 'active',
+        hold_start_date: null,
+        hold_end_date: today.toISOString().split('T')[0],
+        end_date: newEndDate.toISOString().split('T')[0]
+      })
+      .eq('id', client.id);
+
+    if (error) throw error;
+
+    alert(`Membership resumed for ${client.name}\n\nHold Duration: ${holdDays} days\nNew Expiry: ${newEndDate.toISOString().split('T')[0]}`);
+    fetchClients();
+  } catch (error) {
+    console.error('Error continuing membership:', error);
+    alert('Error: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+//new
+const handleViewMemberDetails = (client) => {
+  setSelectedMember(client);
+  setShowMemberDetails(true);
+};
   const updateFee = (membership) => {
     const fee = membershipFees[membership];
     setFormData(prev => ({ ...prev, membership, fee }));
@@ -165,7 +306,7 @@ const App = () => {
     }
   };
 
-  const handleAddClient = async () => {
+ const handleAddClient = async () => {
   if (!formData.name || !formData.phone || !formData.address || !formData.startDate) {
     alert('Please fill required fields!');
     return;
@@ -177,6 +318,17 @@ const App = () => {
     endDate.setMonth(endDate.getMonth() + membershipMonths[formData.membership]);
     
     const finalFee = parseInt(formData.fee) || membershipFees[formData.membership];
+    const joinDate = formData.startDate; // Store join date
+
+    // Create initial payment history entry
+    const initialPayment = {
+      date: new Date(formData.startDate).toISOString(), // Use start date as payment date
+      amount: finalFee,
+      membership: formData.membership,
+      type: 'New Membership',
+      startDate: formData.startDate,
+      endDate: endDate.toISOString().split('T')[0]
+    };
 
     const newMember = {
       name: formData.name,
@@ -189,9 +341,12 @@ const App = () => {
       membership: formData.membership,
       start_date: formData.startDate,
       end_date: endDate.toISOString().split('T')[0],
+      join_date: joinDate, // Store join date separately
       fee: finalFee,
       discount: 0,
-      status: new Date() <= endDate ? 'active' : 'expired'
+      status: new Date() <= endDate ? 'active' : 'expired',
+      hold_status: 'active',
+      payment_history: [initialPayment]
     };
 
     const { error } = await supabase
@@ -207,7 +362,7 @@ const App = () => {
       fee: membershipFees.basic
     });
     setActiveTab('clients');
-    fetchClients(); // Reload data
+    fetchClients();
   } catch (error) {
     console.error('Error adding member:', error);
     alert('Error adding member: ' + error.message);
@@ -537,12 +692,17 @@ const handleRemoveClient = async (id) => {
   }
 
   // --- MEMBER FILTERING LOGIC ---
-  const filteredClients = clients.filter(client => {
-    if (memberFilter === 'all') {
-      return true;
-    }
-    return client.status === memberFilter;
-  });
+const filteredClients = clients.filter(client => {
+  // Filter by status
+  const matchesFilter = memberFilter === 'all' || client.status === memberFilter;
+  
+  // Filter by search query
+  const matchesSearch = searchQuery === '' || 
+    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    client.phone.includes(searchQuery);
+  
+  return matchesFilter && matchesSearch;
+});
 
   // --- DASHBOARD LAYOUT (AUTHENTICATED) ---
   return (
@@ -696,102 +856,229 @@ const handleRemoveClient = async (id) => {
       </div>
 
       {/* CONTENT */}
-      {activeTab === 'clients' ? (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: '24px'
-        }}>
+{activeTab === 'clients' ? (
+  <>
+    {/* SEARCH BAR */}
+    <div style={{
+      background: CARD_DARK,
+      borderRadius: '16px',
+      padding: '20px',
+      marginBottom: '24px',
+      boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+      border: `1px solid ${BORDER_DARK}`
+    }}>
+      <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
+        🔍 Search Members
+      </label>
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="Search by name or phone number..."
+        style={{
+          ...inputStyle,
+          fontSize: '15px',
+          padding: '16px 20px'
+        }}
+      />
+      {searchQuery && (
+        <p style={{ marginTop: '10px', color: TEXT_SECONDARY, fontSize: '14px' }}>
+          Found {filteredClients.length} member{filteredClients.length !== 1 ? 's' : ''}
+        </p>
+      )}
+    </div>
+
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+      gap: '24px'
+    }}>
           {/* MAPPING OVER FILTERED CLIENTS */}
           {filteredClients.length > 0 ? filteredClients.map(c => (
             <div key={c.id} style={{
-              background: CARD_DARK,
-              borderRadius: '18px',
-              padding: '26px',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-              borderLeft: `6px solid ${c.status === 'active' ? PRIMARY_COLOR : '#ef4444'}`,
-              border: `1px solid ${BORDER_DARK}`
-            }}>
-              <h3 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '18px', color: TEXT_LIGHT }}>
-                {c.name}
-              </h3>
-              <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📞 {c.phone}</div>
-              <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📧 {c.email || 'Not provided'}</div>
-              <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>🏠 {c.address}</div>
-              {c.age && <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>👤 {c.age} years, {c.gender}</div>}
-              {c.emergencyContact && <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>🚨 {c.emergencyContact}</div>}
-              <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>💳 {c.membership.toUpperCase()} Plan</div>
-              <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📅 {c.startDate} to {c.endDate}</div>
-              <div style={{ fontSize: '14px', color: PRIMARY_COLOR, marginBottom: '16px', fontWeight: '600' }}>
-                💰 Rs {c.fee} {c.discount > 0 ? `(${c.discount}% discount)` : ''}
-              </div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginTop: '16px',
-                paddingTop: '16px',
-                borderTop: `1px solid ${BORDER_DARK}`
-              }}>
-                <span style={{
-                  padding: '8px 18px',
-                  borderRadius: '25px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  background: c.status === 'active' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
-                  color: 'white'
-                }}>
-                  {c.status.toUpperCase()}
-                </span>
+  background: CARD_DARK,
+  borderRadius: '18px',
+  padding: '26px',
+  boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+  borderLeft: `6px solid ${c.status === 'active' ? (c.holdStatus === 'on_hold' ? '#f59e0b' : PRIMARY_COLOR) : '#ef4444'}`,
+  border: `1px solid ${BORDER_DARK}`,
+  opacity: c.holdStatus === 'on_hold' ? 0.8 : 1
+}}>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '18px' }}>
+    <h3 style={{ fontSize: '22px', fontWeight: '700', color: TEXT_LIGHT, margin: 0 }}>
+      {c.name}
+    </h3>
+    <button
+      onClick={() => handleViewMemberDetails(c)}
+      style={{
+        background: 'transparent',
+        border: `1px solid ${PRIMARY_COLOR}`,
+        color: PRIMARY_COLOR,
+        padding: '6px 12px',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        fontSize: '12px',
+        fontWeight: '600'
+      }}
+    >
+      View Details
+    </button>
+  </div>
 
-                {/* --- RENEWAL BUTTON CALLS OPEN MODAL --- */}
-                {c.status === 'expired' ? (
-               <button
-  onClick={() => openRenewalModal(c)}
-  disabled={loading}
-  style={{
-    background: PRIMARY_GRADIENT,
-    color: BG_DARK,
-    padding: '8px 20px',
-    border: 'none',
+  {c.holdStatus === 'on_hold' && (
+    <div style={{
+      background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+      color: 'white',
+      padding: '8px 12px',
+      borderRadius: '8px',
+      marginBottom: '12px',
+      fontSize: '13px',
+      fontWeight: '600'
+    }}>
+      ⏸️ ON HOLD since {new Date(c.holdStartDate).toLocaleDateString()}
+    </div>
+  )}
+
+  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📞 {c.phone}</div>
+  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📧 {c.email || 'Not provided'}</div>
+  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>🏠 {c.address}</div>
+  {c.age && <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>👤 {c.age} years, {c.gender}</div>}
+  {c.emergencyContact && <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>🚨 {c.emergencyContact}</div>}
+  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>💳 {c.membership.toUpperCase()} Plan</div>
+  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📅 {c.startDate} to {c.endDate}</div>
+  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>
+    🗓️ Joined: {new Date(c.joinDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+  </div>
+  <div style={{ 
+    fontSize: '15px', 
+    color: PRIMARY_COLOR, 
+    marginBottom: '16px', 
+    fontWeight: '700',
+    background: INPUT_DARK,
+    padding: '10px 14px',
     borderRadius: '10px',
-    cursor: loading ? 'not-allowed' : 'pointer',
-    fontWeight: '600',
-    fontSize: '13px',
-    boxShadow: '0 2px 8px rgba(0, 225, 255, 0.4)',
-    opacity: loading ? 0.6 : 1
-  }}
->
-  RENEW PLAN
-</button>
-                ) : (
-                  <button
-                    onClick={() => handleRemoveClient(c.id)}
-                    style={{
-                      background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
-                      color: 'white',
-                      padding: '8px 20px',
-                      border: 'none',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      fontWeight: '600',
-                      fontSize: '13px'
-                    }}
-                  >
-                    Remove
-                  </button>
-                )}
-                {/* -------------------------------------- */}
-              </div>
-            </div>
+    border: `1px solid ${BORDER_DARK}`
+  }}>
+    💰 Total Revenue: Rs {c.fee.toLocaleString('en-IN')}
+  </div>
+
+  <div style={{
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: '16px',
+    paddingTop: '16px',
+    borderTop: `1px solid ${BORDER_DARK}`,
+    flexWrap: 'wrap',
+    gap: '10px'
+  }}>
+    <span style={{
+      padding: '8px 18px',
+      borderRadius: '25px',
+      fontSize: '12px',
+      fontWeight: '700',
+      background: c.status === 'active' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+      color: 'white'
+    }}>
+      {c.status.toUpperCase()}
+    </span>
+
+    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      {c.status === 'active' && c.holdStatus === 'active' && (
+        <button
+          onClick={() => handleHoldMembership(c)}
+          disabled={loading}
+          style={{
+            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            color: 'white',
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontWeight: '600',
+            fontSize: '12px',
+            opacity: loading ? 0.6 : 1
+          }}
+        >
+          ⏸️ Hold
+        </button>
+      )}
+
+      {c.holdStatus === 'on_hold' && (
+        <button
+          onClick={() => handleContinueMembership(c)}
+          disabled={loading}
+          style={{
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontWeight: '600',
+            fontSize: '12px',
+            opacity: loading ? 0.6 : 1
+          }}
+        >
+          ▶️ Continue
+        </button>
+      )}
+
+      {c.status === 'expired' ? (
+        <button
+          onClick={() => openRenewalModal(c)}
+          disabled={loading}
+          style={{
+            background: PRIMARY_GRADIENT,
+            color: BG_DARK,
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontWeight: '600',
+            fontSize: '12px',
+            boxShadow: '0 2px 8px rgba(0, 225, 255, 0.4)',
+            opacity: loading ? 0.6 : 1
+          }}
+        >
+          🔄 RENEW
+        </button>
+      ) : (
+        <button
+          onClick={() => handleRemoveClient(c.id)}
+          disabled={loading}
+          style={{
+            background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+            color: 'white',
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontWeight: '600',
+            fontSize: '12px',
+            opacity: loading ? 0.6 : 1
+          }}
+        >
+          ❌ Remove
+        </button>
+      )}
+    </div>
+  </div>
+</div>
           )) : (
-            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: CARD_DARK, borderRadius: '18px', color: TEXT_SECONDARY }}>
-              {memberFilter === 'all' && 'No members found.'}
-              {memberFilter === 'active' && 'No active members match the filter.'}
-              {memberFilter === 'expired' && 'No expired members match the filter.'}
-            </div>
-          )}
-        </div>
+          
+  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: CARD_DARK, borderRadius: '18px', color: TEXT_SECONDARY }}>
+    {searchQuery ? `No members found matching "${searchQuery}"` : (
+      <>
+        {memberFilter === 'all' && 'No members found.'}
+        {memberFilter === 'active' && 'No active members match the filter.'}
+        {memberFilter === 'expired' && 'No expired members match the filter.'}
+      </>
+    )}
+  </div>
+)}
+</div>
+</>
       ) : (
         <div style={{
           background: CARD_DARK,
@@ -922,70 +1209,235 @@ const handleRemoveClient = async (id) => {
     </div>
 
     {/* --- NEW: RENEWAL MODAL COMPONENT --- */}
-    {renewalClient && (
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
+    {renewalClient && (() => {
+  const today = new Date();
+  const expiredDate = new Date(renewalClient.endDate);
+  const daysSinceExpiry = Math.floor((today - expiredDate) / (1000 * 60 * 60 * 24));
+  
+  return (
+  <div style={{
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px',
+    overflowY: 'auto'
+  }}>
+    <div style={{
+      background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '500px', width: '100%', border: `1px solid ${BORDER_DARK}`,
+      maxHeight: '90vh', overflowY: 'auto'
+    }}>
+      <h3 style={{ marginBottom: '15px', color: TEXT_LIGHT, fontSize: '20px' }}>
+        🔄 Renew Membership for {renewalClient.name}
+      </h3>
+      
+      <div style={{ 
+        background: INPUT_DARK, 
+        padding: '15px', 
+        borderRadius: '10px', 
+        marginBottom: '20px',
+        border: `1px solid ${daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}`
       }}>
+        <p style={{ color: TEXT_SECONDARY, margin: '0 0 8px 0' }}>
+          <strong style={{color: '#ef4444'}}>Expired on:</strong> {renewalClient.endDate}
+        </p>
+        <p style={{ color: TEXT_SECONDARY, margin: '0' }}>
+          <strong style={{color: daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}}>
+            {daysSinceExpiry} day{daysSinceExpiry !== 1 ? 's' : ''} ago
+          </strong>
+        </p>
+      </div>
+
+      {daysSinceExpiry > 7 && (
         <div style={{
-          background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '450px', width: '100%', border: `1px solid ${BORDER_DARK}`
+          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+          color: 'white',
+          padding: '12px',
+          borderRadius: '10px',
+          marginBottom: '20px',
+          fontSize: '13px',
+          fontWeight: '600'
         }}>
-          <h3 style={{ marginBottom: '15px', color: TEXT_LIGHT }}>🔄 Renew Membership for {renewalClient.name}</h3>
-          <p style={{ color: TEXT_SECONDARY, marginBottom: '20px' }}>
-            Current Status: <strong style={{color: '#ef4444'}}>EXPIRED</strong> on {renewalClient.endDate}
-          </p>
+          ⚠️ Membership expired {daysSinceExpiry} days ago
+        </div>
+      )}
 
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
-            Select New Membership Plan
-          </label>
-          <select 
-            value={renewalPlan} 
-            onChange={(e) => setRenewalPlan(e.target.value)} 
-            style={{...inputStyle, marginBottom: '20px'}}
-          >
-            <option value="basic" style={{ backgroundColor: INPUT_DARK }}>Basic (1 Month) - Rs {membershipFees.basic.toLocaleString('en-IN')}</option>
-            <option value="premium" style={{ backgroundColor: INPUT_DARK }}>Premium (3 Months) - Rs {membershipFees.premium.toLocaleString('en-IN')}</option>
-            <option value="platinum" style={{ backgroundColor: INPUT_DARK }}>Platinum (6 Months) - Rs {membershipFees.platinum.toLocaleString('en-IN')}</option>
-            <option value="annual" style={{ backgroundColor: INPUT_DARK }}>Annual (12 Months) - Rs {membershipFees.annual.toLocaleString('en-IN')}</option>
-          </select>
+      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+        Select New Membership Plan
+      </label>
+      <select 
+        value={renewalPlan} 
+        onChange={(e) => setRenewalPlan(e.target.value)} 
+        style={{...inputStyle, marginBottom: '20px'}}
+      >
+        <option value="basic" style={{ backgroundColor: INPUT_DARK }}>Basic (1 Month) - Rs {membershipFees.basic.toLocaleString('en-IN')}</option>
+        <option value="premium" style={{ backgroundColor: INPUT_DARK }}>Premium (3 Months) - Rs {membershipFees.premium.toLocaleString('en-IN')}</option>
+        <option value="platinum" style={{ backgroundColor: INPUT_DARK }}>Platinum (6 Months) - Rs {membershipFees.platinum.toLocaleString('en-IN')}</option>
+        <option value="annual" style={{ backgroundColor: INPUT_DARK }}>Annual (12 Months) - Rs {membershipFees.annual.toLocaleString('en-IN')}</option>
+      </select>
 
-          <p style={{ color: TEXT_LIGHT, marginBottom: '25px', fontSize: '16px' }}>
-            **New Fee Payable:** <strong style={{color: PRIMARY_COLOR}}>Rs {membershipFees[renewalPlan].toLocaleString('en-IN')}</strong>
-          </p>
+      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+        When to Start New Membership?
+      </label>
+      <select 
+        value={renewalStartOption} 
+        onChange={(e) => setRenewalStartOption(e.target.value)} 
+        style={{...inputStyle, marginBottom: '20px'}}
+      >
+        <option value="auto" style={{ backgroundColor: INPUT_DARK }}>
+          Auto (Start from {daysSinceExpiry > 7 ? 'today' : 'expiry date'})
+        </option>
+        <option value="from_expiry" style={{ backgroundColor: INPUT_DARK }}>
+          Continue from expiry date ({renewalClient.endDate})
+        </option>
+        <option value="from_today" style={{ backgroundColor: INPUT_DARK }}>
+          Start from today ({today.toISOString().split('T')[0]})
+        </option>
+      </select>
 
-          <div style={{ display: 'flex', gap: '15px' }}>
-            <button
-              onClick={() => setRenewalClient(null)}
-              style={{
-                flex: 1, background: INPUT_DARK, color: TEXT_SECONDARY, padding: '12px', border: `1px solid ${BORDER_DARK}`,
-                borderRadius: '10px', cursor: 'pointer', fontWeight: '600'
-              }}
-            >
-              Cancel
-            </button>
-            <button
-  onClick={handleRenewSubscription}
-  disabled={loading}
-  style={{
-    flex: 1, 
-    background: PRIMARY_GRADIENT, 
-    color: BG_DARK, 
-    padding: '12px', 
-    border: 'none',
-    borderRadius: '10px', 
-    cursor: loading ? 'not-allowed' : 'pointer', 
-    fontWeight: '600', 
-    boxShadow: '0 4px 10px rgba(0, 225, 255, 0.3)',
-    opacity: loading ? 0.6 : 1
-  }}
->
-  {loading ? 'Processing...' : `Confirm Renewal (Rs ${membershipFees[renewalPlan].toLocaleString('en-IN')})`}
-</button>
-          </div>
+      <p style={{ color: TEXT_LIGHT, marginBottom: '25px', fontSize: '16px' }}>
+        <strong>Fee Payable:</strong> <strong style={{color: PRIMARY_COLOR}}>Rs {membershipFees[renewalPlan].toLocaleString('en-IN')}</strong>
+      </p>
+
+      <div style={{ display: 'flex', gap: '15px' }}>
+        <button
+          onClick={() => setRenewalClient(null)}
+          style={{
+            flex: 1, background: INPUT_DARK, color: TEXT_SECONDARY, padding: '12px', border: `1px solid ${BORDER_DARK}`,
+            borderRadius: '10px', cursor: 'pointer', fontWeight: '600'
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleRenewSubscription}
+          disabled={loading}
+          style={{
+            flex: 1, 
+            background: PRIMARY_GRADIENT, 
+            color: BG_DARK, 
+            padding: '12px', 
+            border: 'none',
+            borderRadius: '10px', 
+            cursor: loading ? 'not-allowed' : 'pointer', 
+            fontWeight: '600', 
+            boxShadow: '0 4px 10px rgba(0, 225, 255, 0.3)',
+            opacity: loading ? 0.6 : 1
+          }}
+        >
+          {loading ? 'Processing...' : 'Confirm Renewal'}
+        </button>
+      </div>
+    </div>
+  </div>
+  );
+})()}
+    {/* ------------------------------------------- */}
+    {/* --- MEMBER DETAILS MODAL --- */}
+{showMemberDetails && selectedMember && (
+  <div style={{
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px',
+    overflowY: 'auto'
+  }}>
+    <div style={{
+      background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '600px', width: '100%', border: `1px solid ${BORDER_DARK}`,
+      maxHeight: '90vh', overflowY: 'auto'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '20px' }}>
+        <h2 style={{ color: TEXT_LIGHT, margin: 0 }}>👤 {selectedMember.name}</h2>
+        <button
+          onClick={() => setShowMemberDetails(false)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: TEXT_SECONDARY,
+            fontSize: '24px',
+            cursor: 'pointer',
+            padding: '0',
+            lineHeight: '1'
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      <div style={{ marginBottom: '30px' }}>
+        <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>📋 Member Information</h3>
+        <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px', marginBottom: '10px' }}>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>📞 Phone: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.phone}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>📧 Email: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.email || 'Not provided'}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>🏠 Address: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.address}</strong></p>
+          {selectedMember.age && <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>👤 Age: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.age} years, {selectedMember.gender}</strong></p>}
+          {selectedMember.emergencyContact && <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>🚨 Emergency: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.emergencyContact}</strong></p>}
         </div>
       </div>
-    )}
-    {/* ------------------------------------------- */}
+
+      <div style={{ marginBottom: '30px' }}>
+        <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>💳 Current Membership</h3>
+        <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px' }}>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Plan: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.membership.toUpperCase()}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Status: <strong style={{ color: selectedMember.status === 'active' ? '#10b981' : '#ef4444' }}>{selectedMember.status.toUpperCase()}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Joined: <strong style={{ color: TEXT_LIGHT }}>{new Date(selectedMember.joinDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Current Period: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.startDate} to {selectedMember.endDate}</strong></p>
+          <p style={{ color: PRIMARY_COLOR, margin: '8px 0', fontSize: '16px' }}>💰 Total Revenue: <strong>Rs {selectedMember.fee.toLocaleString('en-IN')}</strong></p>
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>💵 Payment History</h3>
+        {selectedMember.paymentHistory && selectedMember.paymentHistory.length > 0 ? (
+          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {selectedMember.paymentHistory.map((payment, index) => (
+              <div key={index} style={{
+                background: INPUT_DARK,
+                padding: '15px',
+                borderRadius: '10px',
+                marginBottom: '10px',
+                border: `1px solid ${BORDER_DARK}`
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ color: TEXT_LIGHT, fontWeight: '600' }}>
+                    {payment.type === 'New Membership' ? '🆕' : '🔄'} {payment.type}
+                  </span>
+                  <span style={{ color: PRIMARY_COLOR, fontWeight: '700' }}>
+                    Rs {payment.amount.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+                  📅 Paid: {new Date(payment.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                </p>
+                <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+                  💳 Plan: {payment.membership.toUpperCase()}
+                </p>
+                <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+                  📆 Period: {payment.startDate} to {payment.endDate}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ color: TEXT_SECONDARY, textAlign: 'center', padding: '20px' }}>No payment history available</p>
+        )}
+      </div>
+
+      <button
+        onClick={() => setShowMemberDetails(false)}
+        style={{
+          width: '100%',
+          background: PRIMARY_GRADIENT,
+          color: BG_DARK,
+          padding: '14px',
+          border: 'none',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          fontWeight: '600',
+          fontSize: '15px',
+          marginTop: '20px'
+        }}
+      >
+        Close
+      </button>
+    </div>
+  </div>
+)}
     </div>
   );
 };
