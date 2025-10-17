@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-
-
+import bcrypt from 'bcryptjs';
 // Assuming gymLogo.jpg is in your public folder or imported correctly
 
 const App = () => {
@@ -13,6 +12,11 @@ const App = () => {
   const [loginPassword, setLoginPassword] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [stats, setStats] = useState({ total: 0, active: 0, expired: 0, revenue: 0 });
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
 
   // --- NEW STATE: Tracks the member currently in the renewal modal ---
   const [renewalClient, setRenewalClient] = useState(null);
@@ -24,6 +28,8 @@ const App = () => {
   const [selectedMember, setSelectedMember] = useState(null); // For viewing member details
 const [showMemberDetails, setShowMemberDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState(''); // Search functionality
+  const [sortOption, setSortOption] = useState('name'); // 'name', 'newest', 'oldest'
+const [customRenewalDate, setCustomRenewalDate] = useState('');
   // --- 1. MEMBERSHIP DATA ---
   const membershipFees = { basic: 2000, premium: 5000, platinum: 9000, annual: 16000 };
   const membershipMonths = { basic: 1, premium: 3, platinum: 6, annual: 12 };
@@ -45,19 +51,31 @@ const [showMemberDetails, setShowMemberDetails] = useState(false);
   const INPUT_DARK = '#282828';
   // ---------------------------------
 
-  useEffect(() => {
+useEffect(() => {
   if (isAuthenticated) {
-    fetchClients(); // Changed from loadDemoData
+    fetchClients();
   }
-}, [isAuthenticated]);
+}, [isAuthenticated, sortOption]); // Re-fetch when sort changes
 
  const fetchClients = async () => {
   setLoading(true);
   try {
-    const { data, error } = await supabase
-      .from('members')
-      .select('*')
-      .order('name', { ascending: true }); // Sort alphabetically by name
+    // Determine sort order based on sortOption
+let orderColumn = 'name';
+let ascending = true;
+
+if (sortOption === 'newest') {
+  orderColumn = 'created_at';
+  ascending = false;
+} else if (sortOption === 'oldest') {
+  orderColumn = 'created_at';
+  ascending = true;
+}
+
+const { data, error } = await supabase
+  .from('members')
+  .select('*')
+  .order(orderColumn, { ascending });
     
     if (error) throw error;
     
@@ -128,22 +146,115 @@ const [showMemberDetails, setShowMemberDetails] = useState(false);
     });
   };
 
-  const handleLogin = () => {
-    if (loginUsername === 'admin' && loginPassword === 'admin123') {
-      setIsAuthenticated(true);
-      setMemberFilter('all');
-    } else {
+ const handleLogin = async () => {
+  
+  if (!loginUsername || !loginPassword) {
+    alert('Please enter both username and password!');
+    return;
+  }
+  // ... rest of the code
+
+  setLoading(true);
+  
+  try {
+    // Get user by username only
+    const { data, error } = await supabase
+      .from('admin_users')
+      .select('*')
+      .eq('username', loginUsername)
+      .single();
+
+    if (error || !data) {
       alert('Invalid credentials!');
+      setLoading(false);
+      return;
     }
-  };
+
+    // Compare hashed password
+    const passwordMatch = await bcrypt.compare(loginPassword, data.password);
+
+    if (!passwordMatch) {
+      alert('Invalid credentials!');
+      setLoading(false);
+      return;
+    }
+
+    setCurrentUser(data);
+    setIsAuthenticated(true);
+    setMemberFilter('all');
+    setLoginPassword('');
+  } catch (error) {
+    console.error('Login error:', error);
+    alert('Login failed. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // --- NEW: Function to open the renewal modal ---
  const openRenewalModal = (client) => {
   setRenewalClient(client);
   setRenewalPlan(client.membership);
-  setRenewalStartOption('auto'); // Reset to auto
+  setRenewalStartOption('auto');
+  setCustomRenewalDate(''); // Reset custom date
 };
   // ------------------------------------------------
+  // --- Handle Change Password ---
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      alert('Please fill all password fields!');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert('New password and confirm password do not match!');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      alert('New password must be at least 6 characters long!');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Verify current password using bcrypt
+      const passwordMatch = await bcrypt.compare(currentPassword, currentUser.password);
+      if (!passwordMatch) {
+        alert('Current password is incorrect!');
+        setLoading(false);
+        return;
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password in database
+      const { error: updateError } = await supabase
+        .from('admin_users')
+        .update({ 
+          password: hashedPassword,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', currentUser.id);
+
+      if (updateError) throw updateError;
+
+      alert('Password changed successfully!');
+      setShowChangePassword(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      
+      // Update current user data with new hashed password
+      setCurrentUser({ ...currentUser, password: hashedPassword });
+    } catch (error) {
+      console.error('Error changing password:', error);
+      alert('Error changing password: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // --- UPDATED: Function to handle renewal submission ---
   const handleRenewSubscription = async () => {
@@ -163,13 +274,22 @@ const [showMemberDetails, setShowMemberDetails] = useState(false);
     let newStartDate, renewalType;
     
     // Determine start date based on user selection
-    if (renewalStartOption === 'from_today') {
-      newStartDate = today.toISOString().split('T')[0];
-      renewalType = 'Renewal (Started from today)';
-    } else if (renewalStartOption === 'from_expiry') {
-      newStartDate = oldEndDate.toISOString().split('T')[0];
-      renewalType = 'Renewal (Continued from expiry)';
-    } else {
+    // Determine start date based on user selection
+if (renewalStartOption === 'custom') {
+  if (!customRenewalDate) {
+    alert('Please select a custom start date!');
+    setLoading(false);
+    return;
+  }
+  newStartDate = customRenewalDate;
+  renewalType = 'Renewal (Custom start date)';
+} else if (renewalStartOption === 'from_today') {
+  newStartDate = today.toISOString().split('T')[0];
+  renewalType = 'Renewal (Started from today)';
+} else if (renewalStartOption === 'from_expiry') {
+  newStartDate = oldEndDate.toISOString().split('T')[0];
+  renewalType = 'Renewal (Continued from expiry)';
+} else {
       // Auto mode: If expired for more than 7 days, start from today
       if (daysSinceExpiry > 7) {
         newStartDate = today.toISOString().split('T')[0];
@@ -520,6 +640,7 @@ const handleRemoveClient = async (id) => {
         boxSizing: 'border-box',
         overflow: 'auto'
       }}>
+      
         <div style={{
           background: CARD_DARK,
           borderRadius: '24px',
@@ -623,16 +744,18 @@ const handleRemoveClient = async (id) => {
             borderLeft: `4px solid ${PRIMARY_COLOR}`
           }}>
             <p style={{ fontWeight: 'bold', margin: '0 0 10px 0', color: TEXT_LIGHT, fontSize: '14px' }}>
-              🔐 Demo Credentials:
+              ℹ️ Need Help?
             </p>
             <p style={{ margin: '6px 0', color: TEXT_SECONDARY, fontSize: '14px' }}>
-              <strong>Username:</strong> admin
+              Contact administrator for login assistance
             </p>
             <p style={{ margin: '6px 0', color: TEXT_SECONDARY, fontSize: '14px' }}>
-              <strong>Password:</strong> admin123
+              📧 rahoolmdr1@gmail.com
+            </p>
+            <p style={{ margin: '6px 0', color: TEXT_SECONDARY, fontSize: '14px' }}>
+              📞 9843630842
             </p>
           </div>
-        </div>
 
         {showForgotPassword && (
           <div style={{
@@ -688,19 +811,17 @@ const handleRemoveClient = async (id) => {
           </div>
         )}
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   // --- MEMBER FILTERING LOGIC ---
 const filteredClients = clients.filter(client => {
-  // Filter by status
   const matchesFilter = memberFilter === 'all' || client.status === memberFilter;
-  
-  // Filter by search query
   const matchesSearch = searchQuery === '' || 
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.phone.includes(searchQuery);
-  
+
   return matchesFilter && matchesSearch;
 });
 
@@ -745,6 +866,25 @@ const filteredClients = clients.filter(client => {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              style={{
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                color: 'white',
+                padding: '12px 24px',
+                border: 'none',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '15px',
+                boxShadow: '0 4px 12px rgba(139,92,246,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              🔐 Change Password
+            </button>
             <button
               onClick={handleExportCSV}
               style={{
@@ -860,13 +1000,15 @@ const filteredClients = clients.filter(client => {
   <>
     {/* SEARCH BAR */}
     <div style={{
-      background: CARD_DARK,
-      borderRadius: '16px',
-      padding: '20px',
-      marginBottom: '24px',
-      boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
-      border: `1px solid ${BORDER_DARK}`
-    }}>
+  background: CARD_DARK,
+  borderRadius: '16px',
+  padding: '20px',
+  marginBottom: '24px',
+  boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+  border: `1px solid ${BORDER_DARK}`
+}}>
+  <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap' }}>
+    <div style={{ flex: 1, minWidth: '200px' }}>
       <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
         🔍 Search Members
       </label>
@@ -881,12 +1023,32 @@ const filteredClients = clients.filter(client => {
           padding: '16px 20px'
         }}
       />
-      {searchQuery && (
-        <p style={{ marginTop: '10px', color: TEXT_SECONDARY, fontSize: '14px' }}>
-          Found {filteredClients.length} member{filteredClients.length !== 1 ? 's' : ''}
-        </p>
-      )}
     </div>
+    <div style={{ minWidth: '200px' }}>
+      <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
+        📊 Sort By
+      </label>
+      <select
+        value={sortOption}
+        onChange={(e) => setSortOption(e.target.value)}
+        style={{
+          ...inputStyle,
+          fontSize: '15px',
+          padding: '16px 20px'
+        }}
+      >
+        <option value="name" style={{ backgroundColor: INPUT_DARK }}>A-Z (Name)</option>
+        <option value="newest" style={{ backgroundColor: INPUT_DARK }}>Newest First</option>
+        <option value="oldest" style={{ backgroundColor: INPUT_DARK }}>Oldest First</option>
+      </select>
+    </div>
+  </div>
+  {searchQuery && (
+    <p style={{ marginTop: '10px', color: TEXT_SECONDARY, fontSize: '14px' }}>
+      Found {filteredClients.length} member{filteredClients.length !== 1 ? 's' : ''}
+    </p>
+  )}
+</div>
 
     <div style={{
       display: 'grid',
@@ -1277,20 +1439,38 @@ const filteredClients = clients.filter(client => {
         When to Start New Membership?
       </label>
       <select 
-        value={renewalStartOption} 
-        onChange={(e) => setRenewalStartOption(e.target.value)} 
-        style={{...inputStyle, marginBottom: '20px'}}
-      >
-        <option value="auto" style={{ backgroundColor: INPUT_DARK }}>
-          Auto (Start from {daysSinceExpiry > 7 ? 'today' : 'expiry date'})
-        </option>
-        <option value="from_expiry" style={{ backgroundColor: INPUT_DARK }}>
-          Continue from expiry date ({renewalClient.endDate})
-        </option>
-        <option value="from_today" style={{ backgroundColor: INPUT_DARK }}>
-          Start from today ({today.toISOString().split('T')[0]})
-        </option>
-      </select>
+  value={renewalStartOption} 
+  onChange={(e) => setRenewalStartOption(e.target.value)} 
+  style={{...inputStyle, marginBottom: '20px'}}
+>
+  <option value="auto" style={{ backgroundColor: INPUT_DARK }}>
+    Auto (Start from {daysSinceExpiry > 7 ? 'today' : 'expiry date'})
+  </option>
+  <option value="from_expiry" style={{ backgroundColor: INPUT_DARK }}>
+    Continue from expiry date ({renewalClient.endDate})
+  </option>
+  <option value="from_today" style={{ backgroundColor: INPUT_DARK }}>
+    Start from today ({today.toISOString().split('T')[0]})
+  </option>
+  <option value="custom" style={{ backgroundColor: INPUT_DARK }}>
+    📅 Custom Date (Select below)
+  </option>
+</select>
+
+{renewalStartOption === 'custom' && (
+  <>
+    <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+      Select Custom Start Date
+    </label>
+    <input
+      type="date"
+      value={customRenewalDate}
+      onChange={(e) => setCustomRenewalDate(e.target.value)}
+      min={today.toISOString().split('T')[0]}
+      style={{...inputStyle, marginBottom: '20px'}}
+    />
+  </>
+)}
 
       <p style={{ color: TEXT_LIGHT, marginBottom: '25px', fontSize: '16px' }}>
         <strong>Fee Payable:</strong> <strong style={{color: PRIMARY_COLOR}}>Rs {membershipFees[renewalPlan].toLocaleString('en-IN')}</strong>
@@ -1329,6 +1509,111 @@ const filteredClients = clients.filter(client => {
   </div>
   );
 })()}
+{/* --- CHANGE PASSWORD MODAL --- */}
+    {showChangePassword && (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px',
+        overflowY: 'auto'
+      }}>
+        <div style={{
+          background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '500px', width: '100%', border: `1px solid ${BORDER_DARK}`,
+          maxHeight: '90vh', overflowY: 'auto'
+        }}>
+          <h3 style={{ marginBottom: '20px', color: TEXT_LIGHT, fontSize: '20px' }}>
+            🔐 Change Password
+          </h3>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+              Current Password
+            </label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter current password"
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+              New Password
+            </label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password (min 6 characters)"
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter new password"
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{
+            background: INPUT_DARK,
+            padding: '12px',
+            borderRadius: '10px',
+            marginBottom: '20px',
+            borderLeft: `4px solid #f59e0b`
+          }}>
+            <p style={{ color: TEXT_SECONDARY, margin: 0, fontSize: '13px' }}>
+              ⚠️ Make sure to remember your new password. You'll need it for future logins.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '15px' }}>
+            <button
+              onClick={() => {
+                setShowChangePassword(false);
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+              }}
+              style={{
+                flex: 1, background: INPUT_DARK, color: TEXT_SECONDARY, padding: '12px', border: `1px solid ${BORDER_DARK}`,
+                borderRadius: '10px', cursor: 'pointer', fontWeight: '600'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleChangePassword}
+              disabled={loading}
+              style={{
+                flex: 1,
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                color: 'white',
+                padding: '12px',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                boxShadow: '0 4px 10px rgba(139,92,246,0.3)',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {loading ? 'Changing...' : 'Change Password'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ------------------------------------------- */}
     {/* ------------------------------------------- */}
     {/* --- MEMBER DETAILS MODAL --- */}
 {showMemberDetails && selectedMember && (
