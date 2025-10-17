@@ -10,6 +10,7 @@ const App = () => {
   const [clients, setClients] = useState([]);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [stats, setStats] = useState({ total: 0, active: 0, expired: 0, revenue: 0 });
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -513,65 +514,71 @@ const handleRemoveClient = async (id) => {
 };
 
  const handleExportCSV = () => {
-    // 1. Define Headers (Removed 'Discount' column)
-    const headers = ['Name', 'Phone', 'Email', 'Address', 'Age', 'Gender', 'Emergency Contact',
-                     'Membership', 'Start Date', 'End Date', 'Fee Paid', 'Status'];
+  // Headers now include payment history details
+  const headers = ['Name', 'Phone', 'Email', 'Address', 'Age', 'Gender', 'Emergency Contact',
+                   'Membership', 'Start Date', 'End Date', 'Total Revenue', 'Status', 'Payment History'];
 
-    // Function to format a date string to YYYY-MM-DD
-    const formatDate = (dateString) => {
-        if (!dateString) return '';
-        try {
-            const date = new Date(dateString);
-            if (isNaN(date.getTime())) return dateString; 
-            
-            return date.getFullYear() + '-' + 
-                   String(date.getMonth() + 1).padStart(2, '0') + '-' + 
-                   String(date.getDate()).padStart(2, '0');
-        } catch (e) {
-            return dateString;
-        }
-    };
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      return date.getFullYear() + '-' + 
+             String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+             String(date.getDate()).padStart(2, '0');
+    } catch (e) {
+      return dateString;
+    }
+  };
 
-    // 2. Format the data for CSV
-    const csvData = clients.map(c => {
-        // REMOVED: '' prefix. Phone numbers will be exported as pure strings.
-        // We still use replace(/"/g, '""') to handle commas/quotes inside the data fields safely.
-        const phone = String(c.phone || '').replace(/"/g, '""');
-        const emergencyContact = String(c.emergencyContact || '').replace(/"/g, '""');
+  // Function to format payment history into readable string
+  const formatPaymentHistory = (paymentHistory) => {
+    if (!paymentHistory || paymentHistory.length === 0) {
+      return 'No payment history';
+    }
+    
+    return paymentHistory.map((payment, idx) => {
+      const paymentDate = new Date(payment.date).toLocaleDateString('en-IN');
+      return `[${idx + 1}] ${payment.type} | Rs ${payment.amount} | ${payment.membership.toUpperCase()} | Paid: ${paymentDate} | Period: ${payment.startDate} to ${payment.endDate}`;
+    }).join(' | ');
+  };
 
-        return [
-          c.name, 
-          phone, // No leading apostrophe
-          c.email || '', 
-          c.address, 
-          c.age || '', 
-          c.gender || '',
-          emergencyContact, // No leading apostrophe
-          c.membership.toUpperCase(), 
-          formatDate(c.startDate),
-          formatDate(c.endDate),
-          c.fee, // Fee Paid
-          c.status
-        ];
-    });
+  const csvData = clients.map(c => {
+    const phone = String(c.phone || '').replace(/"/g, '""');
+    const emergencyContact = String(c.emergencyContact || '').replace(/"/g, '""');
+    const paymentHistoryText = formatPaymentHistory(c.paymentHistory);
 
-    // 3. Combine headers and data
-    const csvContent = [
-      headers.join(','),
-      // Map the data rows, quoting each cell for safety (especially addresses)
-      ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
+    return [
+      c.name,
+      phone,
+      c.email || '',
+      c.address,
+      c.age || '',
+      c.gender || '',
+      emergencyContact,
+      c.membership.toUpperCase(),
+      formatDate(c.startDate),
+      formatDate(c.endDate),
+      c.fee,
+      c.status,
+      paymentHistoryText
+    ];
+  });
 
-    // 4. Download logic (no change)
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `gymghar_members_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const csvContent = [
+    headers.join(','),
+    ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `gymghar_members_${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 
   const handleForgotPassword = () => {
@@ -686,19 +693,38 @@ const handleRemoveClient = async (id) => {
             />
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
-              Password
-            </label>
-            <input
-              type="password"
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-              style={inputStyle}
-              placeholder="Enter your password"
-            />
-          </div>
+         <div style={{ marginBottom: '16px' }}>
+  <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+    Password
+  </label>
+  <div style={{ position: 'relative' }}>
+    <input
+      type={showPassword ? 'text' : 'password'}
+      value={loginPassword}
+      onChange={(e) => setLoginPassword(e.target.value)}
+      onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+      style={inputStyle}
+      placeholder="Enter your password"
+    />
+    <button
+      onClick={() => setShowPassword(!showPassword)}
+      style={{
+        position: 'absolute',
+        right: '12px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        background: 'none',
+        border: 'none',
+        color: PRIMARY_COLOR,
+        cursor: 'pointer',
+        fontSize: '18px',
+        padding: '0'
+      }}
+    >
+      {showPassword ? '👁️' : '👁️‍🗨️'}
+    </button>
+  </div>
+</div>
 
           <button
             onClick={handleLogin}
@@ -736,26 +762,7 @@ const handleRemoveClient = async (id) => {
             </button>
           </div>
 
-          <div style={{
-            background: INPUT_DARK,
-            padding: '18px',
-            borderRadius: '12px',
-            marginTop: '24px',
-            borderLeft: `4px solid ${PRIMARY_COLOR}`
-          }}>
-            <p style={{ fontWeight: 'bold', margin: '0 0 10px 0', color: TEXT_LIGHT, fontSize: '14px' }}>
-              ℹ️ Need Help?
-            </p>
-            <p style={{ margin: '6px 0', color: TEXT_SECONDARY, fontSize: '14px' }}>
-              Contact administrator for login assistance
-            </p>
-            <p style={{ margin: '6px 0', color: TEXT_SECONDARY, fontSize: '14px' }}>
-              📧 rahoolmdr1@gmail.com
-            </p>
-            <p style={{ margin: '6px 0', color: TEXT_SECONDARY, fontSize: '14px' }}>
-              📞 9843630842
-            </p>
-          </div>
+          
 
         {showForgotPassword && (
           <div style={{
