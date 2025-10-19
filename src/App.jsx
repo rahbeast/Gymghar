@@ -109,7 +109,8 @@ const { data, error } = await supabase
       holdStatus: member.hold_status || 'active',
       holdStartDate: member.hold_start_date,
       holdEndDate: member.hold_end_date,
-      paymentHistory: member.payment_history || []
+      paymentHistory: member.payment_history || [],
+      isArchived: member.is_archived || false 
   };
     });
     
@@ -138,14 +139,14 @@ const { data, error } = await supabase
 };
 
   const calculateStats = (list) => {
-    setStats({
-      total: list.length,
-      active: list.filter(c => c.status === 'active').length,
-      expired: list.filter(c => c.status === 'expired').length,
-      // Total Revenue is the sum of all fees paid by all members (active and expired)
-      revenue: list.reduce((sum, c) => sum + c.fee, 0)
-    });
-  };
+  const activeList = list.filter(c => !c.isArchived); // Use isArchived (camelCase)
+  setStats({
+    total: activeList.length,
+    active: activeList.filter(c => c.status === 'active').length,
+    expired: activeList.filter(c => c.status === 'expired').length,
+    revenue: activeList.reduce((sum, c) => sum + c.fee, 0)
+  });
+};
 
  const handleLogin = async () => {
   
@@ -512,6 +513,53 @@ const handleRemoveClient = async (id) => {
     }
   }
 };
+const handleMoveToArchive = async (client) => {
+  if (!window.confirm(`Move ${client.name} to archive?\n\nThey will be hidden from the main view but can be restored later.`)) {
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const { error } = await supabase
+      .from('members')
+      .update({ is_archived: true })
+      .eq('id', client.id);
+
+    if (error) throw error;
+
+    alert(`${client.name} moved to archive successfully!`);
+    fetchClients();
+  } catch (error) {
+    console.error('Error archiving member:', error);
+    alert('Error: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleRestoreFromArchive = async (client) => {
+  if (!window.confirm(`Restore ${client.name} from archive?`)) {
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const { error } = await supabase
+      .from('members')
+      .update({ is_archived: false })
+      .eq('id', client.id);
+
+    if (error) throw error;
+
+    alert(`${client.name} restored from archive!`);
+    fetchClients();
+  } catch (error) {
+    console.error('Error restoring member:', error);
+    alert('Error: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
  const handleExportCSV = () => {
   // Headers now include payment history details
@@ -824,6 +872,14 @@ const handleRemoveClient = async (id) => {
 
   // --- MEMBER FILTERING LOGIC ---
 const filteredClients = clients.filter(client => {
+  // First check if we're in bin tab
+  if (activeTab === 'bin') {
+    return client.isArchived === true; // Use isArchived (camelCase)
+  }
+  
+  // For other tabs, exclude archived members
+  if (client.isArchived === true) return false;
+  
   const matchesFilter = memberFilter === 'all' || client.status === memberFilter;
   const matchesSearch = searchQuery === '' || 
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -831,7 +887,6 @@ const filteredClients = clients.filter(client => {
 
   return matchesFilter && matchesSearch;
 });
-
   // --- DASHBOARD LAYOUT (AUTHENTICATED) ---
   return (
     <div style={{
@@ -980,27 +1035,27 @@ const filteredClients = clients.filter(client => {
         gap: '10px',
         boxShadow: '0 8px 20px rgba(0,0,0,0.3)'
       }}>
-        {['clients', 'add'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => { setActiveTab(tab); if (tab === 'clients') setMemberFilter('all'); }}
-            style={{
-              flex: 1,
-              padding: '14px 24px',
-              border: 'none',
-              borderRadius: '12px',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '15px',
-              background: activeTab === tab ? PRIMARY_GRADIENT : 'transparent',
-              color: activeTab === tab ? BG_DARK : TEXT_SECONDARY,
-              boxShadow: activeTab === tab ? '0 6px 20px rgba(0, 225, 255, 0.4)' : 'none'
-            }}
-          >
-            {tab === 'clients' ? '📋 View Members' : '➕ Add New Member'}
-          </button>
-        ))}
-      </div>
+        {['clients', 'bin', 'add'].map(tab => (
+    <button
+      key={tab}
+      onClick={() => { setActiveTab(tab); if (tab === 'clients') setMemberFilter('all'); }}
+      style={{
+        flex: 1,
+        padding: '14px 24px',
+        border: 'none',
+        borderRadius: '12px',
+        cursor: 'pointer',
+        fontWeight: '600',
+        fontSize: '15px',
+        background: activeTab === tab ? PRIMARY_GRADIENT : 'transparent',
+        color: activeTab === tab ? BG_DARK : TEXT_SECONDARY,
+        boxShadow: activeTab === tab ? '0 6px 20px rgba(0, 225, 255, 0.4)' : 'none'
+      }}
+    >
+      {tab === 'clients' ? '📋 View Members' : tab === 'bin' ? '🗑️ Archive' : '➕ Add New Member'}
+    </button>
+  ))}
+</div>
 
       {/* CONTENT */}
 {activeTab === 'clients' ? (
@@ -1142,17 +1197,75 @@ const filteredClients = clients.filter(client => {
     gap: '10px'
   }}>
     <span style={{
-      padding: '8px 18px',
-      borderRadius: '25px',
-      fontSize: '12px',
-      fontWeight: '700',
-      background: c.status === 'active' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
-      color: 'white'
-    }}>
-      {c.status.toUpperCase()}
-    </span>
+  padding: '8px 18px',
+  borderRadius: '25px',
+  fontSize: '12px',
+  fontWeight: '700',
+  background: c.status === 'active' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+  color: 'white'
+}}>
+  {c.status.toUpperCase()}
+</span>
 
-    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+  {c.status === 'expired' ? (
+    <>
+      <button
+        onClick={() => openRenewalModal(c)}
+        disabled={loading}
+        style={{
+          background: PRIMARY_GRADIENT,
+          color: BG_DARK,
+          padding: '8px 16px',
+          border: 'none',
+          borderRadius: '10px',
+          cursor: loading ? 'not-allowed' : 'pointer',
+          fontWeight: '600',
+          fontSize: '12px',
+          boxShadow: '0 2px 8px rgba(0, 225, 255, 0.4)',
+          opacity: loading ? 0.6 : 1
+        }}
+      >
+        🔄 RENEW
+      </button>
+      <button
+      onClick={() => handleMoveToArchive(c)}
+      disabled={loading}
+      style={{
+        background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+        color: 'white',
+        padding: '8px 16px',
+        border: 'none',
+        borderRadius: '10px',
+        cursor: loading ? 'not-allowed' : 'pointer',
+        fontWeight: '600',
+        fontSize: '12px',
+        opacity: loading ? 0.6 : 1
+      }}
+    >
+      📦 Archive
+    </button>
+      
+      <button
+        onClick={() => handleRemoveClient(c.id)}
+        disabled={loading}
+        style={{
+          background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+          color: 'white',
+          padding: '8px 16px',
+          border: 'none',
+          borderRadius: '10px',
+          cursor: loading ? 'not-allowed' : 'pointer',
+          fontWeight: '600',
+          fontSize: '12px',
+          opacity: loading ? 0.6 : 1
+        }}
+      >
+        ❌ Remove
+      </button>
+    </>
+  ) : (
+    <>
       {c.status === 'active' && c.holdStatus === 'active' && (
         <button
           onClick={() => handleHoldMembership(c)}
@@ -1193,49 +1306,29 @@ const filteredClients = clients.filter(client => {
         </button>
       )}
 
-      {c.status === 'expired' ? (
-        <button
-          onClick={() => openRenewalModal(c)}
-          disabled={loading}
-          style={{
-            background: PRIMARY_GRADIENT,
-            color: BG_DARK,
-            padding: '8px 16px',
-            border: 'none',
-            borderRadius: '10px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            fontWeight: '600',
-            fontSize: '12px',
-            boxShadow: '0 2px 8px rgba(0, 225, 255, 0.4)',
-            opacity: loading ? 0.6 : 1
-          }}
-        >
-          🔄 RENEW
-        </button>
-      ) : (
-        <button
-          onClick={() => handleRemoveClient(c.id)}
-          disabled={loading}
-          style={{
-            background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
-            color: 'white',
-            padding: '8px 16px',
-            border: 'none',
-            borderRadius: '10px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            fontWeight: '600',
-            fontSize: '12px',
-            opacity: loading ? 0.6 : 1
-          }}
-        >
-          ❌ Remove
-        </button>
-      )}
-    </div>
+      <button
+        onClick={() => handleRemoveClient(c.id)}
+        disabled={loading}
+        style={{
+          background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+          color: 'white',
+          padding: '8px 16px',
+          border: 'none',
+          borderRadius: '10px',
+          cursor: loading ? 'not-allowed' : 'pointer',
+          fontWeight: '600',
+          fontSize: '12px',
+          opacity: loading ? 0.6 : 1
+        }}
+      >
+        ❌ Remove
+      </button>
+    </>
+  )}
+</div>  
   </div>
 </div>
-          )) : (
-          
+)) : (
   <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: CARD_DARK, borderRadius: '18px', color: TEXT_SECONDARY }}>
     {searchQuery ? `No members found matching "${searchQuery}"` : (
       <>
@@ -1248,6 +1341,92 @@ const filteredClients = clients.filter(client => {
 )}
 </div>
 </>
+      ) : activeTab === 'bin' ? (
+        <>
+          {/* BIN/ARCHIVE VIEW */}
+          <div style={{
+            background: CARD_DARK,
+            borderRadius: '16px',
+            padding: '20px',
+            marginBottom: '24px',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+            border: `1px solid ${BORDER_DARK}`
+          }}>
+            <h3 style={{ color: TEXT_LIGHT, marginBottom: '10px' }}>🗑️ Archived Members</h3>
+            <p style={{ color: TEXT_SECONDARY, fontSize: '14px' }}>
+              Members who haven't renewed for a long time. You can restore or permanently delete them.
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+            gap: '24px'
+          }}>
+            {filteredClients.length > 0 ? filteredClients.map(c => (
+              <div key={c.id} style={{
+                background: CARD_DARK,
+                borderRadius: '18px',
+                padding: '26px',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                borderLeft: `6px solid #8b5cf6`,
+                border: `1px solid ${BORDER_DARK}`,
+                opacity: 0.8
+              }}>
+                <h3 style={{ fontSize: '22px', fontWeight: '700', color: TEXT_LIGHT, margin: '0 0 15px 0' }}>
+                  {c.name}
+                </h3>
+                <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📞 {c.phone}</div>
+                <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📧 {c.email || 'Not provided'}</div>
+                <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>💳 {c.membership.toUpperCase()} Plan</div>
+                <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '15px' }}>📅 Expired: {c.endDate}</div>
+                
+                <div style={{ display: 'flex', gap: '8px', marginTop: '15px' }}>
+                  <button
+                    onClick={() => handleRestoreFromArchive(c)}
+                    disabled={loading}
+                    style={{
+                      flex: 1,
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      padding: '10px 16px',
+                      border: 'none',
+                      borderRadius: '10px',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      fontWeight: '600',
+                      fontSize: '12px',
+                      opacity: loading ? 0.6 : 1
+                    }}
+                  >
+                    ↩️ Restore
+                  </button>
+                  <button
+                    onClick={() => handleRemoveClient(c.id)}
+                    disabled={loading}
+                    style={{
+                      flex: 1,
+                      background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+                      color: 'white',
+                      padding: '10px 16px',
+                      border: 'none',
+                      borderRadius: '10px',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      fontWeight: '600',
+                      fontSize: '12px',
+                      opacity: loading ? 0.6 : 1
+                    }}
+                  >
+                    🗑️ Delete Forever
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: CARD_DARK, borderRadius: '18px', color: TEXT_SECONDARY }}>
+                No archived members
+              </div>
+            )}
+          </div>
+        </>
       ) : (
         <div style={{
           background: CARD_DARK,
@@ -1473,7 +1652,6 @@ const filteredClients = clients.filter(client => {
       type="date"
       value={customRenewalDate}
       onChange={(e) => setCustomRenewalDate(e.target.value)}
-      min={today.toISOString().split('T')[0]}
       style={{...inputStyle, marginBottom: '20px'}}
     />
   </>
