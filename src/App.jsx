@@ -954,68 +954,94 @@ const filteredClients = clients.filter(client => {
   width: isMobile ? '100%' : 'auto',  // CHANGED
   justifyContent: isMobile ? 'stretch' : 'flex-start'  // CHANGED
 }}>
-            <button
+           <button
   onClick={() => setShowChangePassword(true)}
   style={{
     background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
     color: 'white',
-    padding: isMobile ? '8px 10px' : '12px 24px',  // CHANGED
+    padding: isMobile ? '10px 8px' : '12px 24px',  // CHANGED: More vertical padding
     border: 'none',
-    borderRadius: isMobile ? '8px' : '12px',  // CHANGED
+    borderRadius: isMobile ? '8px' : '12px',
     cursor: 'pointer',
     fontWeight: '600',
-    fontSize: isMobile ? '11px' : '15px',  // CHANGED
+    fontSize: isMobile ? '10px' : '15px',  // CHANGED: Slightly smaller but visible
     boxShadow: '0 4px 12px rgba(139,92,246,0.3)',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    flex: isMobile ? '1' : 'none',  // CHANGED: Make buttons equal width on mobile
-    justifyContent: 'center',  // CHANGED
-    whiteSpace: 'nowrap'  // CHANGED: Prevent text wrapping
+    gap: '4px',
+    flex: isMobile ? '1' : 'none',
+    justifyContent: 'center',
+    whiteSpace: isMobile ? 'normal' : 'nowrap',  // CHANGED: Allow wrapping on mobile
+    lineHeight: '1.2',  // CHANGED: Better line spacing
+    textAlign: 'center'  // CHANGED: Center text
   }}
 >
-  {isMobile ? '🔐' : '🔐 Change Password'}  {/* CHANGED: Icon only on mobile */}
+  {isMobile ? (
+    <>
+      🔐<br/>Password
+    </>
+  ) : (
+    '🔐 Change Password'
+  )}
 </button>
            <button
   onClick={handleExportCSV}
   style={{
     background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
     color: 'white',
-    padding: isMobile ? '8px 10px' : '12px 24px',  // CHANGED
+    padding: isMobile ? '10px 8px' : '12px 24px',  // CHANGED
     border: 'none',
-    borderRadius: isMobile ? '8px' : '12px',  // CHANGED
+    borderRadius: isMobile ? '8px' : '12px',
     cursor: 'pointer',
     fontWeight: '600',
-    fontSize: isMobile ? '11px' : '15px',  // CHANGED
+    fontSize: isMobile ? '10px' : '15px',  // CHANGED
     boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    flex: isMobile ? '1' : 'none',  // CHANGED
-    justifyContent: 'center',  // CHANGED
-    whiteSpace: 'nowrap'  // CHANGED
+    gap: '4px',
+    flex: isMobile ? '1' : 'none',
+    justifyContent: 'center',
+    whiteSpace: isMobile ? 'normal' : 'nowrap',  // CHANGED
+    lineHeight: '1.2',  // CHANGED
+    textAlign: 'center'  // CHANGED
   }}
 >
-  {isMobile ? '📥' : '📥 Export CSV'}  {/* CHANGED */}
+  {isMobile ? (
+    <>
+      📥<br/>Export
+    </>
+  ) : (
+    '📥 Export CSV'
+  )}
 </button>
-            <button
+           <button
   onClick={() => setIsAuthenticated(false)}
   style={{
     background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
     color: 'white',
-    padding: isMobile ? '8px 10px' : '12px 28px',  // CHANGED
+    padding: isMobile ? '10px 8px' : '12px 28px',  // CHANGED
     border: 'none',
-    borderRadius: isMobile ? '8px' : '12px',  // CHANGED
+    borderRadius: isMobile ? '8px' : '12px',
     cursor: 'pointer',
     fontWeight: '600',
-    fontSize: isMobile ? '11px' : '15px',  // CHANGED
+    fontSize: isMobile ? '10px' : '15px',  // CHANGED
     boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)',
-    flex: isMobile ? '1' : 'none',  // CHANGED
-    justifyContent: 'center',  // CHANGED
-    whiteSpace: 'nowrap'  // CHANGED
+    flex: isMobile ? '1' : 'none',
+    justifyContent: 'center',
+    whiteSpace: isMobile ? 'normal' : 'nowrap',  // CHANGED
+    lineHeight: '1.2',  // CHANGED
+    textAlign: 'center',  // CHANGED
+    display: 'flex',  // CHANGED
+    alignItems: 'center'  // CHANGED
   }}
 >
-  {isMobile ? '🚪' : 'Logout'}  {/* CHANGED */}
+  {isMobile ? (
+    <>
+      🚪<br/>Logout
+    </>
+  ) : (
+    'Logout'
+  )}
 </button>
           </div>
         </div>
