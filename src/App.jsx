@@ -50,6 +50,8 @@ const [customRenewalDate, setCustomRenewalDate] = useState('');
   const TEXT_SECONDARY = '#a0a0a0'; // Subdued text
   const BORDER_DARK = '#333333';
   const INPUT_DARK = '#282828';
+  const isMobile = window.innerWidth <= 768;
+  const isSmallMobile = window.innerWidth <= 480;
   // ---------------------------------
 
 useEffect(() => {
@@ -57,7 +59,15 @@ useEffect(() => {
     fetchClients();
   }
 }, [isAuthenticated, sortOption]); // Re-fetch when sort changes
-
+useEffect(() => {
+  const handleResize = () => {
+    // Force re-render on resize
+    setLoading(prev => prev);
+  };
+  
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
  const fetchClients = async () => {
   setLoading(true);
   try {
@@ -890,24 +900,24 @@ const filteredClients = clients.filter(client => {
   // --- DASHBOARD LAYOUT (AUTHENTICATED) ---
   return (
     <div style={{
-      minHeight: '100vh',
-      background: BG_DARK,
-      padding: '20px',
-      fontFamily: 'Arial, sans-serif',
-      boxSizing: 'border-box'
-    }}>
+  minHeight: '100vh',
+  background: BG_DARK,
+  padding: isMobile ? '10px' : '20px',  // CHANGED
+  fontFamily: 'Arial, sans-serif',
+  boxSizing: 'border-box'
+}}>
       <div style={{
         maxWidth: '1400px',
         margin: '0 auto'
       }}>
       <div style={{
-        background: CARD_DARK,
-        borderRadius: '20px',
-        padding: '24px',
-        marginBottom: '24px',
-        boxShadow: `0 10px 30px rgba(0,0,0,0.5)`,
-        border: `1px solid ${BORDER_DARK}`
-      }}>
+  background: CARD_DARK,
+  borderRadius: isMobile ? '12px' : '20px',  // CHANGED
+  padding: isMobile ? '12px' : '24px',  // CHANGED
+  marginBottom: isMobile ? '12px' : '24px',  // CHANGED
+  boxShadow: `0 10px 30px rgba(0,0,0,0.5)`,
+  border: `1px solid ${BORDER_DARK}`
+}}>
         {/* Header content... (remains unchanged) */}
         <div style={{
           display: 'flex',
@@ -916,83 +926,108 @@ const filteredClients = clients.filter(client => {
           flexWrap: 'wrap',
           gap: '16px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <LogoComponent size={50} style={{ borderRadius: '12px' }}/>
-            <div>
-              <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: TEXT_LIGHT, margin: '0 0 6px 0' }}>
-                GymGhar Dashboard
-              </h1>
-              <p style={{ color: TEXT_SECONDARY, margin: 0, fontSize: '15px' }}>
-                Manage your gym members efficiently
-              </p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '16px' }}>
+  <LogoComponent size={isMobile ? 35 : 50} style={{ borderRadius: isMobile ? '8px' : '12px' }}/>
+  <div>
+    <h1 style={{ 
+      fontSize: isMobile ? '18px' : '32px',  // CHANGED
+      fontWeight: 'bold', 
+      color: TEXT_LIGHT, 
+      margin: '0 0 4px 0' 
+    }}>
+      GymGhar Dashboard
+    </h1>
+    <p style={{ 
+      color: TEXT_SECONDARY, 
+      margin: 0, 
+      fontSize: isMobile ? '11px' : '15px',  // CHANGED
+      display: isSmallMobile ? 'none' : 'block'  // CHANGED: Hide on very small screens
+    }}>
+      Manage your gym members efficiently
+    </p>
+  </div>
+</div>
+          <div style={{ 
+  display: 'flex', 
+  gap: isMobile ? '6px' : '12px',  // CHANGED
+  flexWrap: 'wrap',
+  width: isMobile ? '100%' : 'auto',  // CHANGED
+  justifyContent: isMobile ? 'stretch' : 'flex-start'  // CHANGED
+}}>
             <button
-              onClick={() => setShowChangePassword(true)}
-              style={{
-                background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-                color: 'white',
-                padding: '12px 24px',
-                border: 'none',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: '15px',
-                boxShadow: '0 4px 12px rgba(139,92,246,0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              🔐 Change Password
-            </button>
+  onClick={() => setShowChangePassword(true)}
+  style={{
+    background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+    color: 'white',
+    padding: isMobile ? '8px 10px' : '12px 24px',  // CHANGED
+    border: 'none',
+    borderRadius: isMobile ? '8px' : '12px',  // CHANGED
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: isMobile ? '11px' : '15px',  // CHANGED
+    boxShadow: '0 4px 12px rgba(139,92,246,0.3)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flex: isMobile ? '1' : 'none',  // CHANGED: Make buttons equal width on mobile
+    justifyContent: 'center',  // CHANGED
+    whiteSpace: 'nowrap'  // CHANGED: Prevent text wrapping
+  }}
+>
+  {isMobile ? '🔐' : '🔐 Change Password'}  {/* CHANGED: Icon only on mobile */}
+</button>
+           <button
+  onClick={handleExportCSV}
+  style={{
+    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+    color: 'white',
+    padding: isMobile ? '8px 10px' : '12px 24px',  // CHANGED
+    border: 'none',
+    borderRadius: isMobile ? '8px' : '12px',  // CHANGED
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: isMobile ? '11px' : '15px',  // CHANGED
+    boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flex: isMobile ? '1' : 'none',  // CHANGED
+    justifyContent: 'center',  // CHANGED
+    whiteSpace: 'nowrap'  // CHANGED
+  }}
+>
+  {isMobile ? '📥' : '📥 Export CSV'}  {/* CHANGED */}
+</button>
             <button
-              onClick={handleExportCSV}
-              style={{
-                background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                color: 'white',
-                padding: '12px 24px',
-                border: 'none',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: '15px',
-                boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              📥 Export CSV
-            </button>
-            <button
-              onClick={() => setIsAuthenticated(false)}
-              style={{
-                background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
-                color: 'white',
-                padding: '12px 28px',
-                border: 'none',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: '15px',
-                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)'
-              }}
-            >
-              Logout
-            </button>
+  onClick={() => setIsAuthenticated(false)}
+  style={{
+    background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+    color: 'white',
+    padding: isMobile ? '8px 10px' : '12px 28px',  // CHANGED
+    border: 'none',
+    borderRadius: isMobile ? '8px' : '12px',  // CHANGED
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: isMobile ? '11px' : '15px',  // CHANGED
+    boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)',
+    flex: isMobile ? '1' : 'none',  // CHANGED
+    justifyContent: 'center',  // CHANGED
+    whiteSpace: 'nowrap'  // CHANGED
+  }}
+>
+  {isMobile ? '🚪' : 'Logout'}  {/* CHANGED */}
+</button>
           </div>
         </div>
       </div>
 
       {/* STATS CARDS - CLICKABLE FOR FILTERING */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-        gap: '20px',
-        marginBottom: '24px'
-      }}>
+  display: 'grid',
+  gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(250px, 1fr))',  // CHANGED: 2 columns on mobile
+  gap: isMobile ? '8px' : '20px',  // CHANGED
+  marginBottom: isMobile ? '12px' : '24px'  // CHANGED
+}}>
         {[
           { num: stats.total, label: 'Total Members', color: PRIMARY_COLOR, icon: '👥', filter: 'all' },
           { num: stats.active, label: 'Active Members', color: '#10b981', icon: '✅', filter: 'active' },
@@ -1000,60 +1035,76 @@ const filteredClients = clients.filter(client => {
           { num: `Rs ${stats.revenue.toLocaleString('en-IN')}`, label: 'Total Revenue', color: '#f59e0b', icon: '💰', filter: null }
         ].map((stat, i) => (
           <div
-            key={i}
-            onClick={() => stat.filter && setMemberFilter(stat.filter)}
-            style={{
-              background: CARD_DARK,
-              borderRadius: '18px',
-              padding: '28px',
-              textAlign: 'center',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-              border: `1px solid ${BORDER_DARK}`,
-              borderBottom: stat.filter && stat.filter === memberFilter ? `4px solid ${stat.color}` : `1px solid ${BORDER_DARK}`,
-              cursor: stat.filter ? 'pointer' : 'default',
-              transform: stat.filter ? 'scale(1)' : 'none',
-              transition: 'transform 0.15s ease-in-out',
-              opacity: stat.filter && memberFilter !== stat.filter && memberFilter !== 'all' ? 0.7 : 1,
-            }}
-          >
-            <div style={{ fontSize: '36px', marginBottom: '12px' }}>{stat.icon}</div>
-            <div style={{ fontSize: '42px', fontWeight: '800', color: stat.color, marginBottom: '8px' }}>
-              {stat.num}
-            </div>
-            <div style={{ color: TEXT_SECONDARY, fontWeight: '600', fontSize: '15px' }}>{stat.label}</div>
-          </div>
+  key={i}
+  onClick={() => stat.filter && setMemberFilter(stat.filter)}
+  style={{
+    background: CARD_DARK,
+    borderRadius: isMobile ? '10px' : '18px',  // CHANGED
+    padding: isMobile ? '12px 8px' : '28px',  // CHANGED
+    textAlign: 'center',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+    border: `1px solid ${BORDER_DARK}`,
+    borderBottom: stat.filter && stat.filter === memberFilter ? `4px solid ${stat.color}` : `1px solid ${BORDER_DARK}`,
+    cursor: stat.filter ? 'pointer' : 'default',
+    transform: stat.filter ? 'scale(1)' : 'none',
+    transition: 'transform 0.15s ease-in-out',
+    opacity: stat.filter && memberFilter !== stat.filter && memberFilter !== 'all' ? 0.7 : 1,
+  }}
+>
+  <div style={{ fontSize: isMobile ? '24px' : '36px', marginBottom: isMobile ? '6px' : '12px' }}>{stat.icon}</div>  {/* CHANGED */}
+  <div style={{ 
+    fontSize: isMobile ? '20px' : '42px',  // CHANGED
+    fontWeight: '800', 
+    color: stat.color, 
+    marginBottom: isMobile ? '4px' : '8px',  // CHANGED
+    wordBreak: 'break-word'  // CHANGED: Prevent overflow
+  }}>
+    {stat.num}
+  </div>
+  <div style={{ 
+    color: TEXT_SECONDARY, 
+    fontWeight: '600', 
+    fontSize: isMobile ? '9px' : '15px',  // CHANGED
+    lineHeight: '1.2'  // CHANGED
+  }}>{stat.label}</div>
+</div>
         ))}
       </div>
 
       {/* TABS */}
       <div style={{
-        background: CARD_DARK,
-        borderRadius: '16px',
-        padding: '10px',
-        marginBottom: '24px',
-        display: 'flex',
-        gap: '10px',
-        boxShadow: '0 8px 20px rgba(0,0,0,0.3)'
-      }}>
+  background: CARD_DARK,
+  borderRadius: isMobile ? '10px' : '16px',  // CHANGED
+  padding: isMobile ? '6px' : '10px',  // CHANGED
+  marginBottom: isMobile ? '12px' : '24px',  // CHANGED
+  display: 'flex',
+  gap: isMobile ? '4px' : '10px',  // CHANGED
+  boxShadow: '0 8px 20px rgba(0,0,0,0.3)'
+}}>
         {['clients', 'bin', 'add'].map(tab => (
     <button
-      key={tab}
-      onClick={() => { setActiveTab(tab); if (tab === 'clients') setMemberFilter('all'); }}
-      style={{
-        flex: 1,
-        padding: '14px 24px',
-        border: 'none',
-        borderRadius: '12px',
-        cursor: 'pointer',
-        fontWeight: '600',
-        fontSize: '15px',
-        background: activeTab === tab ? PRIMARY_GRADIENT : 'transparent',
-        color: activeTab === tab ? BG_DARK : TEXT_SECONDARY,
-        boxShadow: activeTab === tab ? '0 6px 20px rgba(0, 225, 255, 0.4)' : 'none'
-      }}
-    >
-      {tab === 'clients' ? '📋 View Members' : tab === 'bin' ? '🗑️ Archive' : '➕ Add New Member'}
-    </button>
+  key={tab}
+  onClick={() => { setActiveTab(tab); if (tab === 'clients') setMemberFilter('all'); }}
+  style={{
+    flex: 1,
+    padding: isMobile ? '8px 4px' : '14px 24px',  // CHANGED
+    border: 'none',
+    borderRadius: isMobile ? '8px' : '12px',  // CHANGED
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: isMobile ? '10px' : '15px',  // CHANGED
+    background: activeTab === tab ? PRIMARY_GRADIENT : 'transparent',
+    color: activeTab === tab ? BG_DARK : TEXT_SECONDARY,
+    boxShadow: activeTab === tab ? '0 6px 20px rgba(0, 225, 255, 0.4)' : 'none',
+    whiteSpace: isMobile ? 'normal' : 'nowrap',  // CHANGED: Allow wrapping on mobile
+    lineHeight: '1.2'  // CHANGED
+  }}
+>
+  {isMobile ? 
+    (tab === 'clients' ? '📋 Members' : tab === 'bin' ? '🗑️ Archive' : '➕ Add') :  // CHANGED: Shorter text on mobile
+    (tab === 'clients' ? '📋 View Members' : tab === 'bin' ? '🗑️ Archive' : '➕ Add New Member')
+  }
+</button>
   ))}
 </div>
 
@@ -1061,16 +1112,22 @@ const filteredClients = clients.filter(client => {
 {activeTab === 'clients' ? (
   <>
     {/* SEARCH BAR */}
-    <div style={{
+   <div style={{
   background: CARD_DARK,
-  borderRadius: '16px',
-  padding: '20px',
-  marginBottom: '24px',
+  borderRadius: isMobile ? '10px' : '16px',  // CHANGED
+  padding: isMobile ? '12px' : '20px',  // CHANGED
+  marginBottom: isMobile ? '12px' : '24px',  // CHANGED
   boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
   border: `1px solid ${BORDER_DARK}`
 }}>
-  <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap' }}>
-    <div style={{ flex: 1, minWidth: '200px' }}>
+  <div style={{ 
+  display: 'flex', 
+  gap: isMobile ? '10px' : '15px',  // CHANGED
+  marginBottom: isMobile ? '10px' : '15px',  // CHANGED
+  flexWrap: 'wrap',
+  flexDirection: isMobile ? 'column' : 'row'  // CHANGED: Stack vertically on mobile
+}}>
+  <div style={{ flex: 1, minWidth: isMobile ? '100%' : '200px' }}>  {/* CHANGED */}
       <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
         🔍 Search Members
       </label>
@@ -1113,10 +1170,10 @@ const filteredClients = clients.filter(client => {
 </div>
 
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-      gap: '24px'
-    }}>
+  display: 'grid',
+  gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(340px, 1fr))',  // CHANGED: Single column on mobile
+  gap: isMobile ? '12px' : '24px'  // CHANGED
+}}>
           {/* MAPPING OVER FILTERED CLIENTS */}
           {filteredClients.length > 0 ? filteredClients.map(c => (
             <div key={c.id} style={{
@@ -1438,14 +1495,19 @@ const filteredClients = clients.filter(client => {
           border: `1px solid ${BORDER_DARK}`
         }}>
           {/* Add New Member form... (remains unchanged) */}
-          <h2 style={{ fontSize: '26px', fontWeight: 'bold', marginBottom: '28px', color: TEXT_LIGHT }}>
-            ➕ Add New Member
-          </h2>
+          <h2 style={{ 
+  fontSize: isMobile ? '20px' : '26px',  // CHANGED
+  fontWeight: 'bold', 
+  marginBottom: isMobile ? '16px' : '28px',  // CHANGED
+  color: TEXT_LIGHT 
+}}>
+  ➕ Add New Member
+</h2>
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '20px'
-          }}>
+  display: 'grid',
+  gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',  // CHANGED: Single column on mobile
+  gap: isMobile ? '12px' : '20px'  // CHANGED
+}}>
             {[
               { label: 'Full Name *', field: 'name', type: 'text', placeholder: 'Enter full name' },
               { label: 'Phone Number *', field: 'phone', type: 'tel', placeholder: 'Enter phone number' }
