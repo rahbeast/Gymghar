@@ -24,7 +24,9 @@ const App = () => {
   const [renewalPlan, setRenewalPlan] = useState('basic'); // State for selected renewal plan
   const [renewalStartOption, setRenewalStartOption] = useState('auto');
   // -------------------------------------------------------------------
-
+const [uploadingPhoto, setUploadingPhoto] = useState(false);
+const [photoToUpload, setPhotoToUpload] = useState(null);
+const [photoPreview, setPhotoPreview] = useState(null);
   const [memberFilter, setMemberFilter] = useState('all');// 'all', 'active', or 'expired'
   const [selectedMember, setSelectedMember] = useState(null); // For viewing member details
 const [showMemberDetails, setShowMemberDetails] = useState(false);
@@ -156,7 +158,8 @@ const { data, error } = await supabase
       holdStartDate: member.hold_start_date,
       holdEndDate: member.hold_end_date,
       paymentHistory: member.payment_history || [],
-      isArchived: member.is_archived || false 
+      isArchived: member.is_archived || false,
+      photoUrl: member.photo_url || null 
   };
     });
     
@@ -203,6 +206,183 @@ const { data, error } = await supabase
   });
 };
 
+// Helper: Compress and resize image
+const compressImage = async (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Max dimensions: 400x400 for efficiency
+        const MAX_WIDTH = 400;
+        const MAX_HEIGHT = 400;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+        }, 'image/jpeg', 0.8); // 80% quality
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+// Helper: Upload photo to Supabase Storage
+const uploadPhotoToStorage = async (file, memberId) => {
+  try {
+    const compressedFile = await compressImage(file);
+    const fileExt = 'jpg'; // Always use jpg after compression
+    const fileName = `${memberId}_${Date.now()}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { data, error } = await supabase.storage
+      .from('member-photos')
+      .upload(filePath, compressedFile, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) throw error;
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('member-photos')
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('Error uploading photo:', error);
+    throw error;
+  }
+};
+
+// Helper: Delete old photo from storage
+const deletePhotoFromStorage = async (photoUrl) => {
+  if (!photoUrl) return;
+  
+  try {
+    // Extract filename from URL
+    const urlParts = photoUrl.split('/');
+    const fileName = urlParts[urlParts.length - 1];
+    
+    const { error } = await supabase.storage
+      .from('member-photos')
+      .remove([fileName]);
+    
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error deleting photo:', error);
+  }
+};
+
+// Handle photo selection for new member
+const handlePhotoSelect = (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    if (file.size > 5000000) { // 5MB limit
+      alert('Photo size should be less than 5MB');
+      return;
+    }
+    setPhotoToUpload(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+};
+
+// Handle photo update for existing member
+const handleUpdateMemberPhoto = async (memberId, currentPhotoUrl) => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.size > 5000000) {
+      alert('Photo size should be less than 5MB');
+      return;
+    }
+    
+    if (!window.confirm('Update member photo?')) return;
+    
+    setUploadingPhoto(true);
+    try {
+      // Delete old photo if exists
+      if (currentPhotoUrl) {
+        await deletePhotoFromStorage(currentPhotoUrl);
+      }
+      
+      // Upload new photo
+      const photoUrl = await uploadPhotoToStorage(file, memberId);
+      
+      // Update database
+      const { error } = await supabase
+        .from('members')
+        .update({ photo_url: photoUrl })
+        .eq('id', memberId);
+      
+      if (error) throw error;
+      
+      alert('Photo updated successfully!');
+      fetchClients();
+    } catch (error) {
+      console.error('Error updating photo:', error);
+      alert('Error updating photo: ' + error.message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+  
+  input.click();
+};
+
+// Handle photo removal
+const handleRemoveMemberPhoto = async (memberId, photoUrl) => {
+  if (!window.confirm('Remove member photo?')) return;
+  
+  setUploadingPhoto(true);
+  try {
+    // Delete from storage
+    await deletePhotoFromStorage(photoUrl);
+    
+    // Update database
+    const { error } = await supabase
+      .from('members')
+      .update({ photo_url: null })
+      .eq('id', memberId);
+    
+    if (error) throw error;
+    
+    alert('Photo removed successfully!');
+    fetchClients();
+  } catch (error) {
+    console.error('Error removing photo:', error);
+    alert('Error removing photo: ' + error.message);
+  } finally {
+    setUploadingPhoto(false);
+  }
+};
  const handleLogin = async () => {
   
   if (!loginUsername || !loginPassword) {
@@ -535,7 +715,8 @@ const handleViewMemberDetails = (client) => {
       discount: 0,
       status: new Date() <= endDate ? 'active' : 'expired',
       hold_status: 'active',
-      payment_history: [initialPayment]
+      payment_history: [initialPayment],
+       photo_url: null
     };
 
     const { error } = await supabase
@@ -543,6 +724,24 @@ const handleViewMemberDetails = (client) => {
       .insert([newMember]);
 
     if (error) throw error;
+     // Upload photo if selected
+    let photoUrl = null;
+    if (photoToUpload) {
+      try {
+        photoUrl = await uploadPhotoToStorage(photoToUpload, insertedMember.id);
+        
+        // Update member with photo URL
+        const { error: updateError } = await supabase
+          .from('members')
+          .update({ photo_url: photoUrl })
+          .eq('id', insertedMember.id);
+        
+        if (updateError) throw updateError;
+      } catch (photoError) {
+        console.error('Error uploading photo:', photoError);
+        alert('Member added but photo upload failed. You can add it later.');
+      }
+    }
 
     alert('Member added successfully!');
     setFormData({
@@ -1275,26 +1474,123 @@ const filteredClients = clients.filter(client => {
   border: `1px solid ${BORDER_DARK}`,
   opacity: c.holdStatus === 'on_hold' ? 0.8 : 1
 }}>
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '18px' }}>
-    <h3 style={{ fontSize: '22px', fontWeight: '700', color: TEXT_LIGHT, margin: 0 }}>
-      {c.name}
-    </h3>
-    <button
-      onClick={() => handleViewMemberDetails(c)}
-      style={{
-        background: 'transparent',
-        border: `1px solid ${PRIMARY_COLOR}`,
-        color: PRIMARY_COLOR,
-        padding: '6px 12px',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        fontSize: '12px',
-        fontWeight: '600'
-      }}
-    >
-      View Details
-    </button>
+  {/* NEW: Photo + Name Section */}
+<div style={{ display: 'flex', gap: '16px', alignItems: 'start', marginBottom: '18px' }}>
+  
+  {/* LEFT SIDE: Member Photo Circle */}
+  <div style={{ position: 'relative' }}>
+    {/* The circular photo */}
+    <div style={{
+      width: '70px',
+      height: '70px',
+      borderRadius: '50%',
+      background: c.photoUrl ? 'transparent' : CARD_DARK,
+      border: `3px solid ${c.status === 'active' ? (c.holdStatus === 'on_hold' ? '#f59e0b' : PRIMARY_COLOR) : '#ef4444'}`,
+      overflow: 'hidden',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '32px',
+      flexShrink: 0
+    }}>
+      {c.photoUrl ? (
+        <img 
+          src={c.photoUrl} 
+          alt={c.name}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover'
+          }}
+        />
+      ) : (
+        '👤'
+      )}
+    </div>
+    
+    {/* Small action buttons on bottom-right of photo */}
+    <div style={{
+      position: 'absolute',
+      bottom: '-5px',
+      right: '-5px',
+      display: 'flex',
+      gap: '4px'
+    }}>
+      {/* Camera button - Add/Change photo */}
+      <button
+        onClick={() => handleUpdateMemberPhoto(c.id, c.photoUrl)}
+        disabled={uploadingPhoto}
+        style={{
+          background: PRIMARY_GRADIENT,
+          color: BG_DARK,
+          border: 'none',
+          borderRadius: '50%',
+          width: '24px',
+          height: '24px',
+          cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+          fontSize: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+        }}
+        title={c.photoUrl ? "Change photo" : "Add photo"}
+      >
+        📷
+      </button>
+      
+      {/* X button - Remove photo (only shows if photo exists) */}
+      {c.photoUrl && (
+        <button
+          onClick={() => handleRemoveMemberPhoto(c.id, c.photoUrl)}
+          disabled={uploadingPhoto}
+          style={{
+            background: '#ef4444',
+            color: 'white',
+            border: 'none',
+            borderRadius: '50%',
+            width: '24px',
+            height: '24px',
+            cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+          }}
+          title="Remove photo"
+        >
+          ×
+        </button>
+      )}
+    </div>
   </div>
+  
+  {/* RIGHT SIDE: Name and View Details button */}
+  <div style={{ flex: 1 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+      <h3 style={{ fontSize: '22px', fontWeight: '700', color: TEXT_LIGHT, margin: 0 }}>
+        {c.name}
+      </h3>
+      <button
+        onClick={() => handleViewMemberDetails(c)}
+        style={{
+          background: 'transparent',
+          border: `1px solid ${PRIMARY_COLOR}`,
+          color: PRIMARY_COLOR,
+          padding: '6px 12px',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          fontWeight: '600'
+        }}
+      >
+        View Details
+      </button>
+    </div>
+  </div>
+</div>
+
 
   {c.holdStatus === 'on_hold' && (
     <div style={{
@@ -1616,6 +1912,97 @@ const filteredClients = clients.filter(client => {
 }}>
   ➕ Add New Member
 </h2>
+{/* Photo Upload Section */}
+<div style={{
+  marginBottom: '24px',
+  textAlign: 'center',
+  padding: '20px',
+  background: INPUT_DARK,
+  borderRadius: '12px',
+  border: `2px dashed ${BORDER_DARK}`
+}}>
+  <label style={{ display: 'block', marginBottom: '12px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
+    📷 Member Photo (Optional)
+  </label>
+  
+  {photoPreview ? (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <img 
+        src={photoPreview} 
+        alt="Preview" 
+        style={{
+          width: '150px',
+          height: '150px',
+          borderRadius: '50%',
+          objectFit: 'cover',
+          border: `3px solid ${PRIMARY_COLOR}`
+        }}
+      />
+      <button
+        onClick={() => {
+          setPhotoToUpload(null);
+          setPhotoPreview(null);
+        }}
+        style={{
+          position: 'absolute',
+          top: '0',
+          right: '0',
+          background: '#ef4444',
+          color: 'white',
+          border: 'none',
+          borderRadius: '50%',
+          width: '30px',
+          height: '30px',
+          cursor: 'pointer',
+          fontSize: '18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        ×
+      </button>
+    </div>
+  ) : (
+    <div>
+      <div style={{
+        width: '150px',
+        height: '150px',
+        borderRadius: '50%',
+        background: CARD_DARK,
+        margin: '0 auto 12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '48px',
+        border: `2px solid ${BORDER_DARK}`
+      }}>
+        👤
+      </div>
+      <label style={{
+        background: PRIMARY_GRADIENT,
+        color: BG_DARK,
+        padding: '10px 20px',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        fontWeight: '600',
+        fontSize: '14px',
+        display: 'inline-block'
+      }}>
+        Choose Photo
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handlePhotoSelect}
+          style={{ display: 'none' }}
+        />
+      </label>
+      <p style={{ color: TEXT_SECONDARY, fontSize: '12px', marginTop: '8px' }}>
+        Max 5MB • JPG, PNG • Auto-compressed to 400x400px
+      </p>
+    </div>
+  )}
+</div>
           <div style={{
   display: 'grid',
   gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',  // CHANGED: Single column on mobile
@@ -1986,23 +2373,66 @@ const filteredClients = clients.filter(client => {
       background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '600px', width: '100%', border: `1px solid ${BORDER_DARK}`,
       maxHeight: '90vh', overflowY: 'auto'
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '20px' }}>
-        <h2 style={{ color: TEXT_LIGHT, margin: 0 }}>👤 {selectedMember.name}</h2>
-        <button
-          onClick={() => setShowMemberDetails(false)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: TEXT_SECONDARY,
-            fontSize: '24px',
-            cursor: 'pointer',
-            padding: '0',
-            lineHeight: '1'
-          }}
-        >
-          ×
-        </button>
+      
+      {/* NEW: Photo + Name Header Section */}
+      <div style={{ display: 'flex', gap: '20px', alignItems: 'start', marginBottom: '20px' }}>
+        
+        {/* LEFT SIDE: Large Photo (100x100) */}
+        <div style={{
+          width: '100px',
+          height: '100px',
+          borderRadius: '50%',
+          background: selectedMember.photoUrl ? 'transparent' : CARD_DARK,
+          border: `3px solid ${PRIMARY_COLOR}`,
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '48px',
+          flexShrink: 0
+        }}>
+          {selectedMember.photoUrl ? (
+            <img 
+              src={selectedMember.photoUrl} 
+              alt={selectedMember.name}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }}
+            />
+          ) : (
+            '👤'
+          )}
+        </div>
+        
+        {/* RIGHT SIDE: Name and Close Button */}
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+            <h2 style={{ color: TEXT_LIGHT, margin: 0 }}>
+              {selectedMember.name}
+            </h2>
+            <button
+              onClick={() => setShowMemberDetails(false)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: TEXT_SECONDARY,
+                fontSize: '24px',
+                cursor: 'pointer',
+                padding: '0',
+                lineHeight: '1'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Continue with rest of modal content - Member Information, Payment History, etc. */}
+    
+     
 
       <div style={{ marginBottom: '30px' }}>
         <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>📋 Member Information</h3>
