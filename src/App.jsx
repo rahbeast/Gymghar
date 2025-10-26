@@ -52,6 +52,42 @@ const [customRenewalDate, setCustomRenewalDate] = useState('');
   const INPUT_DARK = '#282828';
   const isMobile = window.innerWidth <= 768;
   const isSmallMobile = window.innerWidth <= 480;
+
+  const formatDateFriendly = (dateString) => {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  } catch (e) {
+    return dateString;
+  }
+};
+
+const getDaysRemaining = (endDate) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  const days = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+  return days;
+};
+
+const getExpiryStatus = (endDate) => {
+  const days = getDaysRemaining(endDate);
+  
+  if (days > 7) {
+    return { text: `${days} days left`, color: '#10b981', icon: '✅' };
+  } else if (days > 0) {
+    return { text: `${days} days left`, color: '#f59e0b', icon: '⚠️' };
+  } else if (days === 0) {
+    return { text: 'Expires today', color: '#ef4444', icon: '🔴' };
+  } else {
+    return { text: `Expired ${Math.abs(days)} days ago`, color: '#ef4444', icon: '❌' };
+  }
+};
   // ---------------------------------
 
 useEffect(() => {
@@ -149,10 +185,19 @@ const { data, error } = await supabase
 };
 
   const calculateStats = (list) => {
-  const activeList = list.filter(c => !c.isArchived); // Use isArchived (camelCase)
+  const activeList = list.filter(c => !c.isArchived);
+  
+  // Calculate expiring soon (within 7 days)
+  const expiringSoon = activeList.filter(c => {
+    if (c.status !== 'active') return false;
+    const days = getDaysRemaining(c.endDate);
+    return days > 0 && days <= 7;
+  }).length;
+  
   setStats({
     total: activeList.length,
     active: activeList.filter(c => c.status === 'active').length,
+    expiringSoon: expiringSoon,
     expired: activeList.filter(c => c.status === 'expired').length,
     revenue: activeList.reduce((sum, c) => sum + c.fee, 0)
   });
@@ -894,15 +939,21 @@ const handleRestoreFromArchive = async (client) => {
 
   // --- MEMBER FILTERING LOGIC ---
 const filteredClients = clients.filter(client => {
-  // First check if we're in bin tab
   if (activeTab === 'bin') {
-    return client.isArchived === true; // Use isArchived (camelCase)
+    return client.isArchived === true;
   }
   
-  // For other tabs, exclude archived members
   if (client.isArchived === true) return false;
   
-  const matchesFilter = memberFilter === 'all' || client.status === memberFilter;
+  // Handle expiring soon filter
+  let matchesFilter;
+  if (memberFilter === 'expiring') {
+    const days = getDaysRemaining(client.endDate);
+    matchesFilter = client.status === 'active' && days > 0 && days <= 7;
+  } else {
+    matchesFilter = memberFilter === 'all' || client.status === memberFilter;
+  }
+  
   const matchesSearch = searchQuery === '' || 
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.phone.includes(searchQuery);
@@ -1067,11 +1118,12 @@ const filteredClients = clients.filter(client => {
   marginBottom: isMobile ? '12px' : '24px'  // CHANGED
 }}>
         {[
-          { num: stats.total, label: 'Total Members', color: PRIMARY_COLOR, icon: '👥', filter: 'all' },
-          { num: stats.active, label: 'Active Members', color: '#10b981', icon: '✅', filter: 'active' },
-          { num: stats.expired, label: 'Expired Members', color: '#ef4444', icon: '⚠️', filter: 'expired' },
-          { num: `Rs ${stats.revenue.toLocaleString('en-IN')}`, label: 'Total Revenue', color: '#f59e0b', icon: '💰', filter: null }
-        ].map((stat, i) => (
+  { num: stats.total, label: 'Total Members', color: PRIMARY_COLOR, icon: '👥', filter: 'all' },
+  { num: stats.active, label: 'Active Members', color: '#10b981', icon: '✅', filter: 'active' },
+  { num: stats.expiringSoon || 0, label: 'Expiring Soon', color: '#f59e0b', icon: '⏰', filter: 'expiring' },
+  { num: stats.expired, label: 'Expired Members', color: '#ef4444', icon: '⚠️', filter: 'expired' },
+  { num: `Rs ${stats.revenue.toLocaleString('en-IN')}`, label: 'Total Revenue', color: '#f59e0b', icon: '💰', filter: null }
+].map((stat, i) => (
           <div
   key={i}
   onClick={() => stat.filter && setMemberFilter(stat.filter)}
@@ -1246,16 +1298,16 @@ const filteredClients = clients.filter(client => {
 
   {c.holdStatus === 'on_hold' && (
     <div style={{
-      background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-      color: 'white',
-      padding: '8px 12px',
-      borderRadius: '8px',
-      marginBottom: '12px',
-      fontSize: '13px',
-      fontWeight: '600'
-    }}>
-      ⏸️ ON HOLD since {new Date(c.holdStartDate).toLocaleDateString()}
-    </div>
+  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+  color: 'white',
+  padding: '8px 12px',
+  borderRadius: '8px',
+  marginBottom: '12px',
+  fontSize: '13px',
+  fontWeight: '600'
+}}>
+  ⏸️ ON HOLD since {formatDateFriendly(c.holdStartDate)}
+</div>
   )}
 
   <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📞 {c.phone}</div>
@@ -1264,10 +1316,31 @@ const filteredClients = clients.filter(client => {
   {c.age && <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>👤 {c.age} years, {c.gender}</div>}
   {c.emergencyContact && <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>🚨 {c.emergencyContact}</div>}
   <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>💳 {c.membership.toUpperCase()} Plan</div>
-  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📅 {c.startDate} to {c.endDate}</div>
-  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>
-    🗓️ Joined: {new Date(c.joinDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+ <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>
+  📅 {formatDateFriendly(c.startDate)} to {formatDateFriendly(c.endDate)}
+</div>
+
+{/* ADD THIS NEW SECTION - Expiry Status */}
+{c.status === 'active' && c.holdStatus !== 'on_hold' && (
+  <div style={{
+    fontSize: '13px',
+    fontWeight: '600',
+    marginBottom: '10px',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    background: INPUT_DARK,
+    border: `1px solid ${getExpiryStatus(c.endDate).color}`,
+    color: getExpiryStatus(c.endDate).color,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px'
+  }}>
+    {getExpiryStatus(c.endDate).icon} {getExpiryStatus(c.endDate).text}
   </div>
+)}
+  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>
+  🗓️ Joined: {formatDateFriendly(c.joinDate)}
+</div>
   <div style={{ 
     fontSize: '15px', 
     color: PRIMARY_COLOR, 
@@ -1474,7 +1547,9 @@ const filteredClients = clients.filter(client => {
                 <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📞 {c.phone}</div>
                 <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📧 {c.email || 'Not provided'}</div>
                 <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>💳 {c.membership.toUpperCase()} Plan</div>
-                <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '15px' }}>📅 Expired: {c.endDate}</div>
+                <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '15px' }}>
+  📅 Expired: {formatDateFriendly(c.endDate)} ({getExpiryStatus(c.endDate).text})
+</div>
                 
                 <div style={{ display: 'flex', gap: '8px', marginTop: '15px' }}>
                   <button
@@ -1677,21 +1752,21 @@ const filteredClients = clients.filter(client => {
       </h3>
       
       <div style={{ 
-        background: INPUT_DARK, 
-        padding: '15px', 
-        borderRadius: '10px', 
-        marginBottom: '20px',
-        border: `1px solid ${daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}`
-      }}>
-        <p style={{ color: TEXT_SECONDARY, margin: '0 0 8px 0' }}>
-          <strong style={{color: '#ef4444'}}>Expired on:</strong> {renewalClient.endDate}
-        </p>
-        <p style={{ color: TEXT_SECONDARY, margin: '0' }}>
-          <strong style={{color: daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}}>
-            {daysSinceExpiry} day{daysSinceExpiry !== 1 ? 's' : ''} ago
-          </strong>
-        </p>
-      </div>
+  background: INPUT_DARK, 
+  padding: '15px', 
+  borderRadius: '10px', 
+  marginBottom: '20px',
+  border: `1px solid ${daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}`
+}}>
+  <p style={{ color: TEXT_SECONDARY, margin: '0 0 8px 0' }}>
+    <strong style={{color: '#ef4444'}}>Expired on:</strong> {formatDateFriendly(renewalClient.endDate)}
+  </p>
+  <p style={{ color: TEXT_SECONDARY, margin: '0' }}>
+    <strong style={{color: daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}}>
+      {daysSinceExpiry} day{daysSinceExpiry !== 1 ? 's' : ''} ago
+    </strong>
+  </p>
+</div>
 
       {daysSinceExpiry > 7 && (
         <div style={{
@@ -1733,11 +1808,11 @@ const filteredClients = clients.filter(client => {
     Auto (Start from {daysSinceExpiry > 7 ? 'today' : 'expiry date'})
   </option>
   <option value="from_expiry" style={{ backgroundColor: INPUT_DARK }}>
-    Continue from expiry date ({renewalClient.endDate})
-  </option>
-  <option value="from_today" style={{ backgroundColor: INPUT_DARK }}>
-    Start from today ({today.toISOString().split('T')[0]})
-  </option>
+  Continue from expiry date ({formatDateFriendly(renewalClient.endDate)})
+</option>
+<option value="from_today" style={{ backgroundColor: INPUT_DARK }}>
+  Start from today ({formatDateFriendly(today.toISOString().split('T')[0])})
+</option>
   <option value="custom" style={{ backgroundColor: INPUT_DARK }}>
     📅 Custom Date (Select below)
   </option>
@@ -1945,8 +2020,20 @@ const filteredClients = clients.filter(client => {
         <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px' }}>
           <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Plan: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.membership.toUpperCase()}</strong></p>
           <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Status: <strong style={{ color: selectedMember.status === 'active' ? '#10b981' : '#ef4444' }}>{selectedMember.status.toUpperCase()}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Joined: <strong style={{ color: TEXT_LIGHT }}>{new Date(selectedMember.joinDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Current Period: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.startDate} to {selectedMember.endDate}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Joined: <strong style={{ color: TEXT_LIGHT }}>{formatDateFriendly(selectedMember.joinDate)}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Current Period: <strong style={{ color: TEXT_LIGHT }}>{formatDateFriendly(selectedMember.startDate)} to {formatDateFriendly(selectedMember.endDate)}</strong></p>
+
+{/* ADD THIS: Show expiry status in details modal */}
+{selectedMember.status === 'active' && (
+  <p style={{ 
+    color: getExpiryStatus(selectedMember.endDate).color, 
+    margin: '8px 0',
+    fontWeight: '600',
+    fontSize: '14px'
+  }}>
+    {getExpiryStatus(selectedMember.endDate).icon} Status: {getExpiryStatus(selectedMember.endDate).text}
+  </p>
+)}
           <p style={{ color: PRIMARY_COLOR, margin: '8px 0', fontSize: '16px' }}>💰 Total Revenue: <strong>Rs {selectedMember.fee.toLocaleString('en-IN')}</strong></p>
         </div>
       </div>
@@ -1972,14 +2059,14 @@ const filteredClients = clients.filter(client => {
                   </span>
                 </div>
                 <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-                  📅 Paid: {new Date(payment.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                </p>
-                <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-                  💳 Plan: {payment.membership.toUpperCase()}
-                </p>
-                <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-                  📆 Period: {payment.startDate} to {payment.endDate}
-                </p>
+  📅 Paid: {formatDateFriendly(payment.date)}
+</p>
+<p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+  💳 Plan: {payment.membership.toUpperCase()}
+</p>
+<p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+  📆 Period: {formatDateFriendly(payment.startDate)} to {formatDateFriendly(payment.endDate)}
+</p>
               </div>
             ))}
           </div>
