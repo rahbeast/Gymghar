@@ -317,15 +317,27 @@ if (renewalStartOption === 'custom') {
 
     const newTotalFee = (renewalClient.fee || 0) + renewalFee;
 
-    const newPayment = {
-      date: new Date().toISOString(),
-      amount: renewalFee,
-      membership: renewalPlan,
-      type: renewalType,
-      startDate: newStartDate,
-      endDate: newEndDate.toISOString().split('T')[0]
-    };
+    // Determine the payment date based on renewal option
+let paymentDate;
+if (renewalStartOption === 'custom') {
+  // For custom date, payment date is the custom start date
+  paymentDate = new Date(customRenewalDate).toISOString();
+} else if (renewalStartOption === 'from_expiry') {
+  // For continuing from expiry, payment date is the old end date
+  paymentDate = oldEndDate.toISOString();
+} else {
+  // For 'from_today' or 'auto' starting from today, use today's date
+  paymentDate = new Date().toISOString();
+}
 
+const newPayment = {
+  date: paymentDate,  // ✅ FIXED: Uses the appropriate date based on renewal option
+  amount: renewalFee,
+  membership: renewalPlan,
+  type: renewalType,
+  startDate: newStartDate,
+  endDate: newEndDate.toISOString().split('T')[0]
+};
     const updatedPaymentHistory = [...(renewalClient.paymentHistory || []), newPayment];
 
     const { error } = await supabase
