@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import bcrypt from 'bcryptjs';
+import NepaliDate from 'nepali-date-converter';
 // Assuming gymLogo.jpg is in your public folder or imported correctly
 
 const App = () => {
@@ -67,6 +68,25 @@ const [customRenewalDate, setCustomRenewalDate] = useState('');
       month: 'short', 
       day: 'numeric' 
     });
+  } catch (e) {
+    return dateString;
+  }
+};
+// New function to show both Nepali and English dates
+const formatDateBoth = (dateString) => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString);
+    const nepaliDate = new NepaliDate(date);
+    const nepaliFormatted = nepaliDate.format('YYYY MMMM DD'); // e.g., "२०८१ पुष १५"
+    const englishFormatted = formatDateFriendly(dateString);
+    
+    return (
+      <span>
+        <span style={{ fontWeight: '600' }}>{nepaliFormatted}</span>
+        <span style={{ opacity: 0.7, fontSize: '0.9em' }}> ({englishFormatted})</span>
+      </span>
+    );
   } catch (e) {
     return dateString;
   }
@@ -1656,7 +1676,7 @@ const filteredClients = clients.filter(client => {
   fontSize: '13px',
   fontWeight: '600'
 }}>
-  ⏸️ ON HOLD since {formatDateFriendly(c.holdStartDate)}
+  ⏸️ ON HOLD since {formatDateBoth(c.holdStartDate)}
 </div>
   )}
 
@@ -1667,7 +1687,7 @@ const filteredClients = clients.filter(client => {
   {c.emergencyContact && <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>🚨 {c.emergencyContact}</div>}
   <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>💳 {c.membership.toUpperCase()} Plan</div>
  <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>
-  📅 {formatDateFriendly(c.startDate)} to {formatDateFriendly(c.endDate)}
+  📅 {formatDateBoth(c.startDate)} to {formatDateBoth(c.endDate)}
 </div>
 
 {/* ADD THIS NEW SECTION - Expiry Status */}
@@ -1689,7 +1709,7 @@ const filteredClients = clients.filter(client => {
   </div>
 )}
   <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>
-  🗓️ Joined: {formatDateFriendly(c.joinDate)}
+  🗓️ Joined: {formatDateBoth(c.joinDate)}
 </div>
   <div style={{ 
     fontSize: '15px', 
@@ -1898,7 +1918,7 @@ const filteredClients = clients.filter(client => {
                 <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>📧 {c.email || 'Not provided'}</div>
                 <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '10px' }}>💳 {c.membership.toUpperCase()} Plan</div>
                 <div style={{ fontSize: '14px', color: TEXT_SECONDARY, marginBottom: '15px' }}>
-  📅 Expired: {formatDateFriendly(c.endDate)} ({getExpiryStatus(c.endDate).text})
+  📅 Expired: {formatDateBoth(c.endDate)} ({getExpiryStatus(c.endDate).text})
 </div>
                 
                 <div style={{ display: 'flex', gap: '8px', marginTop: '15px' }}>
@@ -2273,8 +2293,8 @@ const filteredClients = clients.filter(client => {
   border: `1px solid ${daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}`
 }}>
   <p style={{ color: TEXT_SECONDARY, margin: '0 0 8px 0' }}>
-    <strong style={{color: '#ef4444'}}>Expired on:</strong> {formatDateFriendly(renewalClient.endDate)}
-  </p>
+  <strong style={{color: '#ef4444'}}>Expired on:</strong> {formatDateBoth(renewalClient.endDate)}
+</p>
   <p style={{ color: TEXT_SECONDARY, margin: '0' }}>
     <strong style={{color: daysSinceExpiry > 7 ? '#ef4444' : '#f59e0b'}}>
       {daysSinceExpiry} day{daysSinceExpiry !== 1 ? 's' : ''} ago
@@ -2322,10 +2342,10 @@ const filteredClients = clients.filter(client => {
     Auto (Start from {daysSinceExpiry > 7 ? 'today' : 'expiry date'})
   </option>
   <option value="from_expiry" style={{ backgroundColor: INPUT_DARK }}>
-  Continue from expiry date ({formatDateFriendly(renewalClient.endDate)})
+ Continue from expiry date ({formatDateBoth(renewalClient.endDate)})
 </option>
 <option value="from_today" style={{ backgroundColor: INPUT_DARK }}>
-  Start from today ({formatDateFriendly(today.toISOString().split('T')[0])})
+  Start from today ({formatDateBoth(today.toISOString().split('T')[0])})
 </option>
   <option value="custom" style={{ backgroundColor: INPUT_DARK }}>
     📅 Custom Date (Select below)
@@ -2779,8 +2799,8 @@ const filteredClients = clients.filter(client => {
         <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px' }}>
           <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Plan: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.membership.toUpperCase()}</strong></p>
           <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Status: <strong style={{ color: selectedMember.status === 'active' ? '#10b981' : '#ef4444' }}>{selectedMember.status.toUpperCase()}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Joined: <strong style={{ color: TEXT_LIGHT }}>{formatDateFriendly(selectedMember.joinDate)}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Current Period: <strong style={{ color: TEXT_LIGHT }}>{formatDateFriendly(selectedMember.startDate)} to {formatDateFriendly(selectedMember.endDate)}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Joined: <strong style={{ color: TEXT_LIGHT }}>{formatDateBoth(selectedMember.joinDate)}</strong></p>
+          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Current Period: <strong style={{ color: TEXT_LIGHT }}>{formatDateBoth(selectedMember.startDate)} to {formatDateBoth(selectedMember.endDate)}</strong></p>
 
 {/* ADD THIS: Show expiry status in details modal */}
 {selectedMember.status === 'active' && (
@@ -2818,13 +2838,13 @@ const filteredClients = clients.filter(client => {
                   </span>
                 </div>
                 <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-  📅 Paid: {formatDateFriendly(payment.date)}
+  📅 Paid: {formatDateBoth(payment.date)}
 </p>
 <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
   💳 Plan: {payment.membership.toUpperCase()}
 </p>
 <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-  📆 Period: {formatDateFriendly(payment.startDate)} to {formatDateFriendly(payment.endDate)}
+  📆 Period: {formatDateBoth(payment.startDate)} to {formatDateBoth(payment.endDate)}
 </p>
               </div>
             ))}
