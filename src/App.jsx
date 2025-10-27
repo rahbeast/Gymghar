@@ -27,6 +27,10 @@ const App = () => {
 const [uploadingPhoto, setUploadingPhoto] = useState(false);
 const [photoToUpload, setPhotoToUpload] = useState(null);
 const [photoPreview, setPhotoPreview] = useState(null);
+const [showCamera, setShowCamera] = useState(false);
+const [cameraStream, setCameraStream] = useState(null);
+const videoRef = React.useRef(null);
+const canvasRef = React.useRef(null);
   const [memberFilter, setMemberFilter] = useState('all');// 'all', 'active', or 'expired'
   const [selectedMember, setSelectedMember] = useState(null); // For viewing member details
 const [showMemberDetails, setShowMemberDetails] = useState(false);
@@ -106,6 +110,15 @@ useEffect(() => {
   window.addEventListener('resize', handleResize);
   return () => window.removeEventListener('resize', handleResize);
 }, []);
+// Cleanup camera on unmount
+useEffect(() => {
+  return () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+  };
+}, [cameraStream]);
+
  const fetchClients = async () => {
   setLoading(true);
   try {
@@ -308,54 +321,95 @@ const handlePhotoSelect = (e) => {
     setPhotoPreview(URL.createObjectURL(file));
   }
 };
+// Start camera
+const startCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'user', width: 640, height: 480 } 
+    });
+    setCameraStream(stream);
+    setShowCamera(true);
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    }, 100);
+  } catch (error) {
+    console.error('Camera access error:', error);
+    alert('Unable to access camera. Please check permissions or use file upload instead.');
+  }
+};
 
+// Stop camera
+const stopCamera = () => {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    setCameraStream(null);
+  }
+  setShowCamera(false);
+};
+
+// Capture photo from camera
+const capturePhoto = () => {
+  if (videoRef.current && canvasRef.current) {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    canvas.toBlob((blob) => {
+      const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setPhotoToUpload(file);
+      setPhotoPreview(URL.createObjectURL(file));
+      stopCamera();
+    }, 'image/jpeg', 0.9);
+  }
+};
+// Save captured/uploaded photo for existing member
+const savePhotoForExistingMember = async () => {
+  if (!selectedMemberForPhoto || !photoToUpload) return;
+  
+  setUploadingPhoto(true);
+  try {
+    // Delete old photo if exists
+    if (selectedMemberForPhoto.photoUrl) {
+      await deletePhotoFromStorage(selectedMemberForPhoto.photoUrl);
+    }
+    
+    // Upload new photo
+    const photoUrl = await uploadPhotoToStorage(photoToUpload, selectedMemberForPhoto.id);
+    
+    // Update database
+    const { error } = await supabase
+      .from('members')
+      .update({ photo_url: photoUrl })
+      .eq('id', selectedMemberForPhoto.id);
+    
+    if (error) throw error;
+    
+    alert('Photo updated successfully!');
+    setShowPhotoUpdateModal(false);
+    setSelectedMemberForPhoto(null);
+    setPhotoToUpload(null);
+    setPhotoPreview(null);
+    fetchClients();
+  } catch (error) {
+    console.error('Error updating photo:', error);
+    alert('Error updating photo: ' + error.message);
+  } finally {
+    setUploadingPhoto(false);
+  }
+};
 // Handle photo update for existing member
 const handleUpdateMemberPhoto = async (memberId, currentPhotoUrl) => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    if (file.size > 5000000) {
-      alert('Photo size should be less than 5MB');
-      return;
-    }
-    
-    if (!window.confirm('Update member photo?')) return;
-    
-    setUploadingPhoto(true);
-    try {
-      // Delete old photo if exists
-      if (currentPhotoUrl) {
-        await deletePhotoFromStorage(currentPhotoUrl);
-      }
-      
-      // Upload new photo
-      const photoUrl = await uploadPhotoToStorage(file, memberId);
-      
-      // Update database
-      const { error } = await supabase
-        .from('members')
-        .update({ photo_url: photoUrl })
-        .eq('id', memberId);
-      
-      if (error) throw error;
-      
-      alert('Photo updated successfully!');
-      fetchClients();
-    } catch (error) {
-      console.error('Error updating photo:', error);
-      alert('Error updating photo: ' + error.message);
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-  
-  input.click();
+  setSelectedMemberForPhoto({ id: memberId, photoUrl: currentPhotoUrl });
+  setShowPhotoUpdateModal(true);
 };
+const [showPhotoUpdateModal, setShowPhotoUpdateModal] = useState(false);
+const [selectedMemberForPhoto, setSelectedMemberForPhoto] = useState(null);
 
 // Handle photo removal
 const handleRemoveMemberPhoto = async (memberId, photoUrl) => {
@@ -1913,6 +1967,7 @@ const filteredClients = clients.filter(client => {
   ➕ Add New Member
 </h2>
 {/* Photo Upload Section */}
+{/* Photo Upload Section */}
 <div style={{
   marginBottom: '24px',
   textAlign: 'center',
@@ -1925,7 +1980,59 @@ const filteredClients = clients.filter(client => {
     📷 Member Photo (Optional)
   </label>
   
-  {photoPreview ? (
+  {showCamera ? (
+    // Camera view
+    <div>
+      <video 
+        ref={videoRef}
+        autoPlay
+        playsInline
+        style={{
+          width: '100%',
+          maxWidth: '400px',
+          borderRadius: '12px',
+          marginBottom: '12px',
+          background: '#000'
+        }}
+      />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+        <button
+          type="button"
+          onClick={capturePhoto}
+          style={{
+            background: PRIMARY_GRADIENT,
+            color: BG_DARK,
+            padding: '10px 20px',
+            borderRadius: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '14px'
+          }}
+        >
+          📸 Capture Photo
+        </button>
+        <button
+          type="button"
+          onClick={stopCamera}
+          style={{
+            background: '#ef4444',
+            color: 'white',
+            padding: '10px 20px',
+            borderRadius: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '14px'
+          }}
+        >
+          ❌ Cancel
+        </button>
+      </div>
+    </div>
+  ) : photoPreview ? (
+    // Photo preview
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <img 
         src={photoPreview} 
@@ -1939,6 +2046,7 @@ const filteredClients = clients.filter(client => {
         }}
       />
       <button
+        type="button"
         onClick={() => {
           setPhotoToUpload(null);
           setPhotoPreview(null);
@@ -1964,6 +2072,7 @@ const filteredClients = clients.filter(client => {
       </button>
     </div>
   ) : (
+    // Initial state - show options
     <div>
       <div style={{
         width: '150px',
@@ -1979,24 +2088,42 @@ const filteredClients = clients.filter(client => {
       }}>
         👤
       </div>
-      <label style={{
-        background: PRIMARY_GRADIENT,
-        color: BG_DARK,
-        padding: '10px 20px',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        fontWeight: '600',
-        fontSize: '14px',
-        display: 'inline-block'
-      }}>
-        Choose Photo
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handlePhotoSelect}
-          style={{ display: 'none' }}
-        />
-      </label>
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={startCamera}
+          style={{
+            background: PRIMARY_GRADIENT,
+            color: BG_DARK,
+            padding: '10px 20px',
+            borderRadius: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '14px'
+          }}
+        >
+          📷 Take Photo
+        </button>
+        <label style={{
+          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+          color: 'white',
+          padding: '10px 20px',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: '600',
+          fontSize: '14px',
+          display: 'inline-block'
+        }}>
+          📁 Upload Photo
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoSelect}
+            style={{ display: 'none' }}
+          />
+        </label>
+      </div>
       <p style={{ color: TEXT_SECONDARY, fontSize: '12px', marginTop: '8px' }}>
         Max 5MB • JPG, PNG • Auto-compressed to 400x400px
       </p>
@@ -2359,6 +2486,208 @@ const filteredClients = clients.filter(client => {
         </div>
       </div>
     )}
+    {/* --- PHOTO UPDATE MODAL FOR EXISTING MEMBERS --- */}
+{showPhotoUpdateModal && selectedMemberForPhoto && (
+  <div style={{
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px',
+    overflowY: 'auto'
+  }}>
+    <div style={{
+      background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '500px', width: '100%', border: `1px solid ${BORDER_DARK}`,
+      maxHeight: '90vh', overflowY: 'auto'
+    }}>
+      <h3 style={{ marginBottom: '20px', color: TEXT_LIGHT, fontSize: '20px' }}>
+        📷 Update Member Photo
+      </h3>
+
+      {showCamera ? (
+        // Camera view
+        <div style={{ textAlign: 'center' }}>
+          <video 
+            ref={videoRef}
+            autoPlay
+            playsInline
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              borderRadius: '12px',
+              marginBottom: '12px',
+              background: '#000'
+            }}
+          />
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '15px' }}>
+            <button
+              onClick={capturePhoto}
+              style={{
+                background: PRIMARY_GRADIENT,
+                color: BG_DARK,
+                padding: '12px 24px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              📸 Capture Photo
+            </button>
+            <button
+              onClick={stopCamera}
+              style={{
+                background: '#ef4444',
+                color: 'white',
+                padding: '12px 24px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              ❌ Cancel
+            </button>
+          </div>
+        </div>
+      ) : photoPreview ? (
+        // Photo preview
+        <div style={{ textAlign: 'center' }}>
+          <img 
+            src={photoPreview} 
+            alt="Preview" 
+            style={{
+              width: '200px',
+              height: '200px',
+              borderRadius: '50%',
+              objectFit: 'cover',
+              border: `3px solid ${PRIMARY_COLOR}`,
+              marginBottom: '20px'
+            }}
+          />
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button
+              onClick={savePhotoForExistingMember}
+              disabled={uploadingPhoto}
+              style={{
+                flex: 1,
+                background: PRIMARY_GRADIENT,
+                color: BG_DARK,
+                padding: '12px',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                opacity: uploadingPhoto ? 0.6 : 1
+              }}
+            >
+              {uploadingPhoto ? 'Saving...' : '💾 Save Photo'}
+            </button>
+            <button
+              onClick={() => {
+                setPhotoToUpload(null);
+                setPhotoPreview(null);
+              }}
+              disabled={uploadingPhoto}
+              style={{
+                flex: 1,
+                background: INPUT_DARK,
+                color: TEXT_SECONDARY,
+                padding: '12px',
+                border: `1px solid ${BORDER_DARK}`,
+                borderRadius: '10px',
+                cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+                fontWeight: '600'
+              }}
+            >
+              🔄 Retake
+            </button>
+          </div>
+        </div>
+      ) : (
+        // Initial options
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '150px',
+            height: '150px',
+            borderRadius: '50%',
+            background: CARD_DARK,
+            margin: '0 auto 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '48px',
+            border: `2px solid ${BORDER_DARK}`
+          }}>
+            👤
+          </div>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '15px' }}>
+            <button
+              onClick={startCamera}
+              style={{
+                background: PRIMARY_GRADIENT,
+                color: BG_DARK,
+                padding: '12px 20px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              📷 Take Photo
+            </button>
+            <label style={{
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+              color: 'white',
+              padding: '12px 20px',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              display: 'inline-block'
+            }}>
+              📁 Upload Photo
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoSelect}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
+          <p style={{ color: TEXT_SECONDARY, fontSize: '12px', marginBottom: '20px' }}>
+            Max 5MB • JPG, PNG • Auto-compressed to 400x400px
+          </p>
+        </div>
+      )}
+
+      <button
+        onClick={() => {
+          setShowPhotoUpdateModal(false);
+          setSelectedMemberForPhoto(null);
+          setPhotoToUpload(null);
+          setPhotoPreview(null);
+          stopCamera();
+        }}
+        disabled={uploadingPhoto}
+        style={{
+          width: '100%',
+          background: INPUT_DARK,
+          color: TEXT_SECONDARY,
+          padding: '12px',
+          border: `1px solid ${BORDER_DARK}`,
+          borderRadius: '10px',
+          cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+          fontWeight: '600',
+          marginTop: '15px'
+        }}
+      >
+        Close
+      </button>
+    </div>
+  </div>
+)}
 
     {/* ------------------------------------------- */}
     {/* ------------------------------------------- */}
