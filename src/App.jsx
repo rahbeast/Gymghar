@@ -38,6 +38,11 @@ const [showMemberDetails, setShowMemberDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState(''); // Search functionality
   const [sortOption, setSortOption] = useState('name'); // 'name', 'newest', 'oldest'
 const [customRenewalDate, setCustomRenewalDate] = useState('');
+const [isEditingMember, setIsEditingMember] = useState(false);
+const [editFormData, setEditFormData] = useState({
+  name: '', phone: '', email: '', address: '', age: '', gender: '',
+  emergencyContact: '', membership: '', startDate: '', fee: ''
+});
   // --- 1. MEMBERSHIP DATA ---
   const membershipFees = { basic: 2000, premium: 5000, platinum: 9000, annual: 16000 };
   const membershipMonths = { basic: 1, premium: 3, platinum: 6, annual: 12 };
@@ -736,6 +741,7 @@ const handleViewMemberDetails = (client) => {
   setSelectedMember(client);
   setShowMemberDetails(true);
 };
+
   const updateFee = (membership) => {
     const fee = membershipFees[membership];
     setFormData(prev => ({ ...prev, membership, fee }));
@@ -762,6 +768,7 @@ const handleViewMemberDetails = (client) => {
     
     const finalFee = parseInt(formData.fee) || membershipFees[formData.membership];
     const joinDate = formData.startDate; // Store join date
+
 
     // Create initial payment history entry
     const initialPayment = {
@@ -828,6 +835,83 @@ const handleViewMemberDetails = (client) => {
   } catch (error) {
     console.error('Error adding member:', error);
     alert('Error adding member: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+const handleEditMember = (member) => {
+  setIsEditingMember(true);
+  setEditFormData({
+    name: member.name,
+    phone: member.phone,
+    email: member.email || '',
+    address: member.address,
+    age: member.age || '',
+    gender: member.gender || '',
+    emergencyContact: member.emergencyContact || '',
+    membership: member.membership,
+    startDate: member.startDate,
+    fee: member.fee
+  });
+};
+
+const handleCancelEdit = () => {
+  setIsEditingMember(false);
+  setEditFormData({
+    name: '', phone: '', email: '', address: '', age: '', gender: '',
+    emergencyContact: '', membership: '', startDate: '', fee: ''
+  });
+};
+
+const handleEditInputChange = (field, value) => {
+  if (field === 'membership') {
+    const newFee = membershipFees[value];
+    setEditFormData(prev => ({ ...prev, membership: value, fee: newFee }));
+  } else {
+    setEditFormData(prev => ({ ...prev, [field]: value }));
+  }
+};
+
+const handleSaveMemberEdit = async () => {
+  if (!selectedMember || !editFormData.name || !editFormData.phone || !editFormData.address) {
+    alert('Please fill all required fields!');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    // Calculate new end date if start date or membership changed
+    const newEndDate = new Date(editFormData.startDate);
+    newEndDate.setMonth(newEndDate.getMonth() + membershipMonths[editFormData.membership]);
+
+    const updatedData = {
+      name: editFormData.name,
+      phone: editFormData.phone,
+      email: editFormData.email || null,
+      address: editFormData.address,
+      age: editFormData.age ? parseInt(editFormData.age) : null,
+      gender: editFormData.gender || null,
+      emergency_contact: editFormData.emergencyContact || null,
+      membership: editFormData.membership,
+      start_date: editFormData.startDate,
+      end_date: newEndDate.toISOString().split('T')[0],
+      fee: parseInt(editFormData.fee) || membershipFees[editFormData.membership]
+    };
+
+    const { error } = await supabase
+      .from('members')
+      .update(updatedData)
+      .eq('id', selectedMember.id);
+
+    if (error) throw error;
+
+    alert('Member details updated successfully!');
+    setIsEditingMember(false);
+    setShowMemberDetails(false);
+    fetchClients();
+  } catch (error) {
+    console.error('Error updating member:', error);
+    alert('Error updating member: ' + error.message);
   } finally {
     setLoading(false);
   }
@@ -2719,11 +2803,11 @@ const filteredClients = clients.filter(client => {
     overflowY: 'auto'
   }}>
     <div style={{
-      background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '600px', width: '100%', border: `1px solid ${BORDER_DARK}`,
+      background: CARD_DARK, borderRadius: '20px', padding: '30px', maxWidth: '700px', width: '100%', border: `1px solid ${BORDER_DARK}`,
       maxHeight: '90vh', overflowY: 'auto'
     }}>
       
-      {/* NEW: Photo + Name Header Section */}
+      {/* Photo + Name Header Section */}
       <div style={{ display: 'flex', gap: '20px', alignItems: 'start', marginBottom: '20px' }}>
         
         {/* LEFT SIDE: Large Photo (100x100) */}
@@ -2755,14 +2839,17 @@ const filteredClients = clients.filter(client => {
           )}
         </div>
         
-        {/* RIGHT SIDE: Name and Close Button */}
+        {/* RIGHT SIDE: Name and Buttons */}
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px' }}>
             <h2 style={{ color: TEXT_LIGHT, margin: 0 }}>
               {selectedMember.name}
             </h2>
             <button
-              onClick={() => setShowMemberDetails(false)}
+              onClick={() => {
+                setShowMemberDetails(false);
+                setIsEditingMember(false);
+              }}
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -2776,101 +2863,311 @@ const filteredClients = clients.filter(client => {
               ×
             </button>
           </div>
+          {!isEditingMember && (
+            <button
+              onClick={() => handleEditMember(selectedMember)}
+              style={{
+                background: PRIMARY_GRADIENT,
+                color: BG_DARK,
+                padding: '8px 16px',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '13px',
+                boxShadow: '0 2px 8px rgba(0, 225, 255, 0.3)'
+              }}
+            >
+              ✏️ Edit Details
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Continue with rest of modal content - Member Information, Payment History, etc. */}
-    
-     
+      {/* CONDITIONAL RENDERING: Edit Mode vs View Mode */}
+      {isEditingMember ? (
+        // ========== EDIT MODE ==========
+        <>
+          <h3 style={{ color: PRIMARY_COLOR, marginBottom: '20px', fontSize: '18px' }}>✏️ Edit Member Information</h3>
+          
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+            gap: '15px',
+            marginBottom: '20px'
+          }}>
+            {/* Full Name */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Full Name *
+              </label>
+              <input
+                type="text"
+                value={editFormData.name}
+                onChange={(e) => handleEditInputChange('name', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              />
+            </div>
 
-      <div style={{ marginBottom: '30px' }}>
-        <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>📋 Member Information</h3>
-        <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px', marginBottom: '10px' }}>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>📞 Phone: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.phone}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>📧 Email: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.email || 'Not provided'}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>🏠 Address: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.address}</strong></p>
-          {selectedMember.age && <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>👤 Age: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.age} years, {selectedMember.gender}</strong></p>}
-          {selectedMember.emergencyContact && <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>🚨 Emergency: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.emergencyContact}</strong></p>}
-        </div>
-      </div>
+            {/* Phone */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Phone Number *
+              </label>
+              <input
+                type="tel"
+                value={editFormData.phone}
+                onChange={(e) => handleEditInputChange('phone', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              />
+            </div>
 
-      <div style={{ marginBottom: '30px' }}>
-        <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>💳 Current Membership</h3>
-        <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px' }}>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Plan: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.membership.toUpperCase()}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Status: <strong style={{ color: selectedMember.status === 'active' ? '#10b981' : '#ef4444' }}>{selectedMember.status.toUpperCase()}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Joined: <strong style={{ color: TEXT_LIGHT }}>{formatDateBoth(selectedMember.joinDate)}</strong></p>
-          <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Current Period: <strong style={{ color: TEXT_LIGHT }}>{formatDateBoth(selectedMember.startDate)} to {formatDateBoth(selectedMember.endDate)}</strong></p>
+            {/* Email */}
+            <div style={{ gridColumn: isMobile ? '1' : '1 / -1' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={editFormData.email}
+                onChange={(e) => handleEditInputChange('email', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              />
+            </div>
 
-{/* ADD THIS: Show expiry status in details modal */}
-{selectedMember.status === 'active' && (
-  <p style={{ 
-    color: getExpiryStatus(selectedMember.endDate).color, 
-    margin: '8px 0',
-    fontWeight: '600',
-    fontSize: '14px'
-  }}>
-    {getExpiryStatus(selectedMember.endDate).icon} Status: {getExpiryStatus(selectedMember.endDate).text}
-  </p>
-)}
-          <p style={{ color: PRIMARY_COLOR, margin: '8px 0', fontSize: '16px' }}>💰 Total Revenue: <strong>Rs {selectedMember.fee.toLocaleString('en-IN')}</strong></p>
-        </div>
-      </div>
+            {/* Address */}
+            <div style={{ gridColumn: isMobile ? '1' : '1 / -1' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Address *
+              </label>
+              <textarea
+                value={editFormData.address}
+                onChange={(e) => handleEditInputChange('address', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px', minHeight: '70px', resize: 'vertical'}}
+              />
+            </div>
 
-      <div>
-        <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>💵 Payment History</h3>
-        {selectedMember.paymentHistory && selectedMember.paymentHistory.length > 0 ? (
-          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-            {selectedMember.paymentHistory.map((payment, index) => (
-              <div key={index} style={{
-                background: INPUT_DARK,
-                padding: '15px',
-                borderRadius: '10px',
-                marginBottom: '10px',
-                border: `1px solid ${BORDER_DARK}`
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ color: TEXT_LIGHT, fontWeight: '600' }}>
-                    {payment.type === 'New Membership' ? '🆕' : '🔄'} {payment.type}
-                  </span>
-                  <span style={{ color: PRIMARY_COLOR, fontWeight: '700' }}>
-                    Rs {payment.amount.toLocaleString('en-IN')}
-                  </span>
-                </div>
-                <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-  📅 Paid: {formatDateBoth(payment.date)}
-</p>
-<p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-  💳 Plan: {payment.membership.toUpperCase()}
-</p>
-<p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
-  📆 Period: {formatDateBoth(payment.startDate)} to {formatDateBoth(payment.endDate)}
-</p>
-              </div>
-            ))}
+            {/* Age */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Age
+              </label>
+              <input
+                type="number"
+                value={editFormData.age}
+                onChange={(e) => handleEditInputChange('age', e.target.value)}
+                min="16"
+                max="80"
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              />
+            </div>
+
+            {/* Gender */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Gender
+              </label>
+              <select
+                value={editFormData.gender}
+                onChange={(e) => handleEditInputChange('gender', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              >
+                <option value="" style={{ backgroundColor: INPUT_DARK }}>Select Gender</option>
+                <option value="male" style={{ backgroundColor: INPUT_DARK }}>Male</option>
+                <option value="female" style={{ backgroundColor: INPUT_DARK }}>Female</option>
+                <option value="other" style={{ backgroundColor: INPUT_DARK }}>Other</option>
+              </select>
+            </div>
+
+            {/* Emergency Contact */}
+            <div style={{ gridColumn: isMobile ? '1' : '1 / -1' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Emergency Contact
+              </label>
+              <input
+                type="tel"
+                value={editFormData.emergencyContact}
+                onChange={(e) => handleEditInputChange('emergencyContact', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              />
+            </div>
+
+            {/* Membership Plan */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Membership Plan *
+              </label>
+              <select
+                value={editFormData.membership}
+                onChange={(e) => handleEditInputChange('membership', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              >
+                <option value="basic" style={{ backgroundColor: INPUT_DARK }}>Basic (1 Month) - Rs 2,000</option>
+                <option value="premium" style={{ backgroundColor: INPUT_DARK }}>Premium (3 Months) - Rs 5,000</option>
+                <option value="platinum" style={{ backgroundColor: INPUT_DARK }}>Platinum (6 Months) - Rs 9,000</option>
+                <option value="annual" style={{ backgroundColor: INPUT_DARK }}>Annual (12 Months) - Rs 16,000</option>
+              </select>
+            </div>
+
+            {/* Start Date */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Start Date *
+              </label>
+              <input
+                type="date"
+                value={editFormData.startDate}
+                onChange={(e) => handleEditInputChange('startDate', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              />
+            </div>
+
+            {/* Fee Amount */}
+            <div style={{ gridColumn: isMobile ? '1' : '1 / -1' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+                Fee Amount (Rs) *
+              </label>
+              <input
+                type="number"
+                value={editFormData.fee}
+                onChange={(e) => handleEditInputChange('fee', e.target.value)}
+                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
+              />
+            </div>
           </div>
-        ) : (
-          <p style={{ color: TEXT_SECONDARY, textAlign: 'center', padding: '20px' }}>No payment history available</p>
-        )}
-      </div>
 
-      <button
-        onClick={() => setShowMemberDetails(false)}
-        style={{
-          width: '100%',
-          background: PRIMARY_GRADIENT,
-          color: BG_DARK,
-          padding: '14px',
-          border: 'none',
-          borderRadius: '12px',
-          cursor: 'pointer',
-          fontWeight: '600',
-          fontSize: '15px',
-          marginTop: '20px'
-        }}
-      >
-        Close
-      </button>
+          {/* Action Buttons for Edit Mode */}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+            <button
+              onClick={handleCancelEdit}
+              disabled={loading}
+              style={{
+                flex: 1,
+                background: INPUT_DARK,
+                color: TEXT_SECONDARY,
+                padding: '12px',
+                border: `1px solid ${BORDER_DARK}`,
+                borderRadius: '10px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveMemberEdit}
+              disabled={loading}
+              style={{
+                flex: 1,
+                background: PRIMARY_GRADIENT,
+                color: BG_DARK,
+                padding: '12px',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '14px',
+                boxShadow: '0 4px 10px rgba(0, 225, 255, 0.3)',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {loading ? 'Saving...' : '💾 Save Changes'}
+            </button>
+          </div>
+        </>
+      ) : (
+        // ========== VIEW MODE (Original) ==========
+        <>
+          <div style={{ marginBottom: '30px' }}>
+            <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>📋 Member Information</h3>
+            <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px', marginBottom: '10px' }}>
+              <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>📞 Phone: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.phone}</strong></p>
+              <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>📧 Email: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.email || 'Not provided'}</strong></p>
+              <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>🏠 Address: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.address}</strong></p>
+              {selectedMember.age && <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>👤 Age: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.age} years, {selectedMember.gender}</strong></p>}
+              {selectedMember.emergencyContact && <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>🚨 Emergency: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.emergencyContact}</strong></p>}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '30px' }}>
+            <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>💳 Current Membership</h3>
+            <div style={{ background: INPUT_DARK, padding: '15px', borderRadius: '10px' }}>
+              <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Plan: <strong style={{ color: TEXT_LIGHT }}>{selectedMember.membership.toUpperCase()}</strong></p>
+              <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Status: <strong style={{ color: selectedMember.status === 'active' ? '#10b981' : '#ef4444' }}>{selectedMember.status.toUpperCase()}</strong></p>
+              <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Joined: <strong style={{ color: TEXT_LIGHT }}>{formatDateBoth(selectedMember.joinDate)}</strong></p>
+              <p style={{ color: TEXT_SECONDARY, margin: '8px 0' }}>Current Period: <strong style={{ color: TEXT_LIGHT }}>{formatDateBoth(selectedMember.startDate)} to {formatDateBoth(selectedMember.endDate)}</strong></p>
+
+              {selectedMember.status === 'active' && (
+                <p style={{ 
+                  color: getExpiryStatus(selectedMember.endDate).color, 
+                  margin: '8px 0',
+                  fontWeight: '600',
+                  fontSize: '14px'
+                }}>
+                  {getExpiryStatus(selectedMember.endDate).icon} Status: {getExpiryStatus(selectedMember.endDate).text}
+                </p>
+              )}
+              <p style={{ color: PRIMARY_COLOR, margin: '8px 0', fontSize: '16px' }}>💰 Total Revenue: <strong>Rs {selectedMember.fee.toLocaleString('en-IN')}</strong></p>
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ color: PRIMARY_COLOR, marginBottom: '15px', fontSize: '18px' }}>💵 Payment History</h3>
+            {selectedMember.paymentHistory && selectedMember.paymentHistory.length > 0 ? (
+              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                {selectedMember.paymentHistory.map((payment, index) => (
+                  <div key={index} style={{
+                    background: INPUT_DARK,
+                    padding: '15px',
+                    borderRadius: '10px',
+                    marginBottom: '10px',
+                    border: `1px solid ${BORDER_DARK}`
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ color: TEXT_LIGHT, fontWeight: '600' }}>
+                        {payment.type === 'New Membership' ? '🆕' : '🔄'} {payment.type}
+                      </span>
+                      <span style={{ color: PRIMARY_COLOR, fontWeight: '700' }}>
+                        Rs {payment.amount.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+                      📅 Paid: {formatDateBoth(payment.date)}
+                    </p>
+                    <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+                      💳 Plan: {payment.membership.toUpperCase()}
+                    </p>
+                    <p style={{ color: TEXT_SECONDARY, margin: '4px 0', fontSize: '13px' }}>
+                      📆 Period: {formatDateBoth(payment.startDate)} to {formatDateBoth(payment.endDate)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: TEXT_SECONDARY, textAlign: 'center', padding: '20px' }}>No payment history available</p>
+            )}
+          </div>
+
+          <button
+            onClick={() => setShowMemberDetails(false)}
+            style={{
+              width: '100%',
+              background: PRIMARY_GRADIENT,
+              color: BG_DARK,
+              padding: '14px',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '15px',
+              marginTop: '20px'
+            }}
+          >
+            Close
+          </button>
+        </>
+      )}
     </div>
   </div>
 )}
