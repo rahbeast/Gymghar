@@ -14,6 +14,7 @@ const App = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [stats, setStats] = useState({ total: 0, active: 0, expired: 0, revenue: 0 });
+  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -64,6 +65,7 @@ const [editFormData, setEditFormData] = useState({
   const INPUT_DARK = '#282828';
   const isMobile = window.innerWidth <= 768;
   const isSmallMobile = window.innerWidth <= 480;
+  
 
   const formatDateFriendly = (dateString) => {
   if (!dateString) return 'N/A';
@@ -217,6 +219,7 @@ const { data, error } = await supabase
     
     setClients(mappedData);
     calculateStats(mappedData);
+    calculateMonthlyRevenue(mappedData); 
   } catch (error) {
     console.error('Error fetching clients:', error);
     alert('Error loading members: ' + error.message);
@@ -242,6 +245,33 @@ const { data, error } = await supabase
     expired: activeList.filter(c => c.status === 'expired').length,
     revenue: activeList.reduce((sum, c) => sum + c.fee, 0)
   });
+};
+const calculateMonthlyRevenue = (list) => {
+  const activeList = list.filter(c => !c.isArchived);
+  
+  // Get current month and year
+  const now = new Date();
+  const currentMonth = now.getMonth(); // 0-11
+  const currentYear = now.getFullYear();
+  
+  let monthTotal = 0;
+  
+  activeList.forEach(client => {
+    if (client.paymentHistory && client.paymentHistory.length > 0) {
+      client.paymentHistory.forEach(payment => {
+        const paymentDate = new Date(payment.date);
+        const paymentMonth = paymentDate.getMonth();
+        const paymentYear = paymentDate.getFullYear();
+        
+        // Check if payment was made in current month
+        if (paymentMonth === currentMonth && paymentYear === currentYear) {
+          monthTotal += payment.amount;
+        }
+      });
+    }
+  });
+  
+  setMonthlyRevenue(monthTotal);
 };
 
 // Helper: Compress and resize image
@@ -1479,6 +1509,7 @@ const filteredClients = clients.filter(client => {
   { num: stats.active, label: 'Active Members', color: '#10b981', icon: '✅', filter: 'active' },
   { num: stats.expiringSoon || 0, label: 'Expiring Soon', color: '#f59e0b', icon: '⏰', filter: 'expiring' },
   { num: stats.expired, label: 'Expired Members', color: '#ef4444', icon: '⚠️', filter: 'expired' },
+  { num: `Rs ${monthlyRevenue.toLocaleString('en-IN')}`, label: 'This Month Revenue', color: '#10b981', icon: '📅', filter: null },
   { num: `Rs ${stats.revenue.toLocaleString('en-IN')}`, label: 'Total Revenue', color: '#f59e0b', icon: '💰', filter: null }
 ].map((stat, i) => (
           <div
@@ -3168,7 +3199,7 @@ const filteredClients = clients.filter(client => {
           </button>
         </>
       )}
-    </div>
+    </div>a
   </div>
 )}
     </div>
