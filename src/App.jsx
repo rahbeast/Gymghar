@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import bcrypt from 'bcryptjs';
 import NepaliDate from 'nepali-date-converter';
+import NepaliDatePicker from './NepaliDatePicker';
 // Assuming gymLogo.jpg is in your public folder or imported correctly
 
 const App = () => {
@@ -2341,12 +2342,15 @@ const filteredClients = clients.filter(client => {
             </div>
 
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
-                Start Date *
-              </label>
-              <input type="date" value={formData.startDate} onChange={(e) => handleInputChange('startDate', e.target.value)}
-                style={inputStyle} />
-            </div>
+  <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
+    Start Date *
+  </label>
+  <NepaliDatePicker
+    value={formData.startDate}
+    onChange={(date) => handleInputChange('startDate', date)}
+    placeholder="Select start date"
+  />
+</div>
 
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
@@ -2472,12 +2476,13 @@ const filteredClients = clients.filter(client => {
     <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '14px' }}>
       Select Custom Start Date
     </label>
-    <input
-      type="date"
-      value={customRenewalDate}
-      onChange={(e) => setCustomRenewalDate(e.target.value)}
-      style={{...inputStyle, marginBottom: '20px'}}
-    />
+    <div style={{ marginBottom: '20px' }}>
+      <NepaliDatePicker
+        value={customRenewalDate}
+        onChange={(date) => setCustomRenewalDate(date)}
+        placeholder="Select custom start date"
+      />
+    </div>
   </>
 )}
 
@@ -3041,17 +3046,16 @@ const filteredClients = clients.filter(client => {
             </div>
 
             {/* Start Date */}
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
-                Start Date *
-              </label>
-              <input
-                type="date"
-                value={editFormData.startDate}
-                onChange={(e) => handleEditInputChange('startDate', e.target.value)}
-                style={{...inputStyle, padding: '10px 12px', fontSize: '14px'}}
-              />
-            </div>
+<div>
+  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '13px' }}>
+    Start Date *
+  </label>
+  <NepaliDatePicker
+    value={editFormData.startDate}
+    onChange={(date) => handleEditInputChange('startDate', date)}
+    placeholder="Select start date"
+  />
+</div>
 
             {/* Fee Amount */}
             <div style={{ gridColumn: isMobile ? '1' : '1 / -1' }}>
