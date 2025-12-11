@@ -1383,6 +1383,16 @@ const filteredClients = clients.filter(client => {
             transform: translateY(0);
           }
         }
+           @keyframes pulse {
+          0%, 100% {
+            transform: scale(1);
+            box-shadow: 0 8px 20px rgba(0, 225, 255, 0.4);
+          }
+          50% {
+            transform: scale(1.05);
+            box-shadow: 0 12px 30px rgba(0, 225, 255, 0.6);
+          }
+        }
       `}
     </style>
     <div style={{
@@ -3247,34 +3257,39 @@ const filteredClients = clients.filter(client => {
     onClick={scrollToTop}
     style={{
       position: 'fixed',
-      bottom: isMobile ? '20px' : '30px',
-      right: isMobile ? '20px' : '30px',
-      width: isMobile ? '50px' : '60px',
-      height: isMobile ? '50px' : '60px',
+      bottom: isMobile ? '24px' : '30px',
+      right: isMobile ? '24px' : '30px',
+      width: isMobile ? '56px' : '60px',
+      height: isMobile ? '56px' : '60px',
       borderRadius: '50%',
       background: PRIMARY_GRADIENT,
       color: BG_DARK,
       border: 'none',
       cursor: 'pointer',
       fontSize: isMobile ? '24px' : '28px',
-      boxShadow: '0 8px 20px rgba(0, 225, 255, 0.4)',
+      boxShadow: '0 8px 25px rgba(0, 225, 255, 0.5), 0 0 20px rgba(0, 225, 255, 0.3)',
       zIndex: 999,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       transition: 'all 0.3s ease',
-      animation: 'fadeIn 0.3s ease'
+      animation: 'fadeIn 0.3s ease',
+      animation: showScrollTop ? 'fadeIn 0.3s ease, pulse 2s ease-in-out infinite' : 'none',
     }}
     onMouseEnter={(e) => {
-      e.currentTarget.style.transform = 'scale(1.1) translateY(-3px)';
-      e.currentTarget.style.boxShadow = '0 12px 30px rgba(0, 225, 255, 0.6)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.transform = 'scale(1) translateY(0)';
-      e.currentTarget.style.boxShadow = '0 8px 20px rgba(0, 225, 255, 0.4)';
-    }}
+  if (!isMobile) {
+    e.currentTarget.style.transform = 'scale(1.1) translateY(-3px)';
+    e.currentTarget.style.boxShadow = '0 12px 30px rgba(0, 225, 255, 0.6)';
+  }
+}}
+onMouseLeave={(e) => {
+  if (!isMobile) {
+    e.currentTarget.style.transform = 'scale(1) translateY(0)';
+    e.currentTarget.style.boxShadow = '0 8px 20px rgba(0, 225, 255, 0.4)';
+  }
+}}
   >
-    ⬆️
+    ⇧
   </button>
 )}
     </div>
