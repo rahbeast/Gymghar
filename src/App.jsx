@@ -38,6 +38,7 @@ const canvasRef = React.useRef(null);
   const [selectedMember, setSelectedMember] = useState(null); // For viewing member details
 const [showMemberDetails, setShowMemberDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState(''); // Search functionality
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [sortOption, setSortOption] = useState('name'); // 'name', 'newest', 'oldest'
 const [customRenewalDate, setCustomRenewalDate] = useState('');
 const [isEditingMember, setIsEditingMember] = useState(false);
@@ -137,6 +138,19 @@ useEffect(() => {
   
   window.addEventListener('resize', handleResize);
   return () => window.removeEventListener('resize', handleResize);
+}, []);
+// Detect scroll position
+useEffect(() => {
+  const handleScroll = () => {
+    if (window.scrollY > 400) {
+      setShowScrollTop(true);
+    } else {
+      setShowScrollTop(false);
+    }
+  };
+  
+  window.addEventListener('scroll', handleScroll);
+  return () => window.removeEventListener('scroll', handleScroll);
 }, []);
 // Cleanup camera on unmount
 useEffect(() => {
@@ -968,6 +982,12 @@ const handleRemoveClient = async (id) => {
     }
   }
 };
+const scrollToTop = () => {
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
+};
 const handleMoveToArchive = async (client) => {
   if (!window.confirm(`Move ${client.name} to archive?\n\nThey will be hidden from the main view but can be restored later.`)) {
     return;
@@ -1350,13 +1370,28 @@ const filteredClients = clients.filter(client => {
 });
   // --- DASHBOARD LAYOUT (AUTHENTICATED) ---
   return (
+  <>
+    <style>
+      {`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}
+    </style>
     <div style={{
-  minHeight: '100vh',
-  background: BG_DARK,
-  padding: isMobile ? '10px' : '20px',  // CHANGED
-  fontFamily: 'Arial, sans-serif',
-  boxSizing: 'border-box'
-}}>
+      minHeight: '100vh',
+      background: BG_DARK,
+      padding: isMobile ? '10px' : '20px',
+      fontFamily: 'Arial, sans-serif',
+      boxSizing: 'border-box'
+    }}>
       <div style={{
         maxWidth: '1400px',
         margin: '0 auto'
@@ -3203,10 +3238,47 @@ const filteredClients = clients.filter(client => {
           </button>
         </>
       )}
-    </div>a
+    </div>
   </div>
 )}
+{/* BACK TO TOP BUTTON */}
+{showScrollTop && (
+  <button
+    onClick={scrollToTop}
+    style={{
+      position: 'fixed',
+      bottom: isMobile ? '20px' : '30px',
+      right: isMobile ? '20px' : '30px',
+      width: isMobile ? '50px' : '60px',
+      height: isMobile ? '50px' : '60px',
+      borderRadius: '50%',
+      background: PRIMARY_GRADIENT,
+      color: BG_DARK,
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: isMobile ? '24px' : '28px',
+      boxShadow: '0 8px 20px rgba(0, 225, 255, 0.4)',
+      zIndex: 999,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      transition: 'all 0.3s ease',
+      animation: 'fadeIn 0.3s ease'
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.transform = 'scale(1.1) translateY(-3px)';
+      e.currentTarget.style.boxShadow = '0 12px 30px rgba(0, 225, 255, 0.6)';
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.transform = 'scale(1) translateY(0)';
+      e.currentTarget.style.boxShadow = '0 8px 20px rgba(0, 225, 255, 0.4)';
+    }}
+  >
+    ⬆️
+  </button>
+)}
     </div>
+    </>
   );
 };
 
