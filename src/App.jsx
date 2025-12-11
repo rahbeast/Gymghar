@@ -3259,8 +3259,8 @@ const filteredClients = clients.filter(client => {
       position: 'fixed',
       bottom: isMobile ? '24px' : '30px',
       right: isMobile ? '24px' : '30px',
-      width: isMobile ? '56px' : '60px',
-      height: isMobile ? '56px' : '60px',
+      width: isMobile ? '70px' : '60px',
+      height: isMobile ? '70px' : '60px',
       borderRadius: '50%',
       background: PRIMARY_GRADIENT,
       color: BG_DARK,
@@ -3273,7 +3273,6 @@ const filteredClients = clients.filter(client => {
       alignItems: 'center',
       justifyContent: 'center',
       transition: 'all 0.3s ease',
-      animation: 'fadeIn 0.3s ease',
       animation: showScrollTop ? 'fadeIn 0.3s ease, pulse 2s ease-in-out infinite' : 'none',
     }}
     onMouseEnter={(e) => {
