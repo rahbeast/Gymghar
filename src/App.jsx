@@ -1244,7 +1244,7 @@ const handleRestoreFromArchive = async (client) => {
         padding: '0'
       }}
     >
-      {showPassword ? '👁️' : '👁️‍🗨️'}
+      {showPassword ? '🙉' : '🙈'}
     </button>
   </div>
 </div>
@@ -3259,8 +3259,8 @@ const filteredClients = clients.filter(client => {
       position: 'fixed',
       bottom: isMobile ? '24px' : '30px',
       right: isMobile ? '24px' : '30px',
-      width: isMobile ? '100px' : '60px',
-      height: isMobile ? '100px' : '60px',
+      width: isMobile ? '60px' : '60px',
+      height: isMobile ? '60px' : '60px',
       borderRadius: '50%',
       background: PRIMARY_GRADIENT,
       color: BG_DARK,
