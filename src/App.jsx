@@ -1244,7 +1244,7 @@ const handleRestoreFromArchive = async (client) => {
         padding: '0'
       }}
     >
-      {showPassword ? '👁️' : '👁️‍🗨️'}
+      {showPassword ? '🙉' : '🙈'}
     </button>
   </div>
 </div>
@@ -1632,77 +1632,75 @@ const filteredClients = clients.filter(client => {
   ))}
 </div>
 
-      {/* CONTENT */}
-      {/* SEARCH BAR - VISIBLE FOR BOTH CLIENTS AND ARCHIVE TABS */}
-      {(activeTab === 'clients' || activeTab === 'bin') && (
-        <div style={{
-          background: CARD_DARK,
-          borderRadius: isMobile ? '10px' : '16px',
-          padding: isMobile ? '12px' : '20px',
-          marginBottom: isMobile ? '12px' : '24px',
-          boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
-          border: `1px solid ${BORDER_DARK}`
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            gap: isMobile ? '10px' : '15px',
-            marginBottom: isMobile ? '10px' : '15px',
-            flexWrap: 'wrap',
-            flexDirection: isMobile ? 'column' : 'row'
-          }}>
-            <div style={{ flex: 1, minWidth: isMobile ? '100%' : '200px' }}>
-              <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
-                🔍 Search Members
-              </label>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name or phone number..."
-                style={{
-                  ...inputStyle,
-                  fontSize: '15px',
-                  padding: '16px 20px'
-                }}
-              />
-            </div>
-            {activeTab === 'clients' && (
-              <div style={{ minWidth: '200px' }}>
-                <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
-                  📊 Sort By
-                </label>
-                <select
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    fontSize: '15px',
-                    padding: '16px 20px'
-                  }}
-                >
-                  <option value="name" style={{ backgroundColor: INPUT_DARK }}>A-Z (Name)</option>
-                  <option value="newest" style={{ backgroundColor: INPUT_DARK }}>Newest First</option>
-                  <option value="oldest" style={{ backgroundColor: INPUT_DARK }}>Oldest First</option>
-                </select>
-              </div>
-            )}
-          </div>
-          {searchQuery && (
-            <p style={{ marginTop: '10px', color: TEXT_SECONDARY, fontSize: '14px' }}>
-              Found {filteredClients.length} member{filteredClients.length !== 1 ? 's' : ''}
-            </p>
-          )}
-        </div>
-      )}
+ {/* CONTENT */}
+
+{/* SEARCH BAR - Shows for both clients and archive tabs */}
+{(activeTab === 'clients' || activeTab === 'bin') && (
+  <div style={{
+    background: CARD_DARK,
+    borderRadius: isMobile ? '10px' : '16px',
+    padding: isMobile ? '12px' : '20px',
+    marginBottom: isMobile ? '12px' : '24px',
+    boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+    border: `1px solid ${BORDER_DARK}`
+  }}>
+    <div style={{ 
+      display: 'flex', 
+      gap: isMobile ? '10px' : '15px',
+      marginBottom: isMobile ? '10px' : '15px',
+      flexWrap: 'wrap',
+      flexDirection: isMobile ? 'column' : 'row'
+    }}>
+      <div style={{ flex: 1, minWidth: isMobile ? '100%' : '200px' }}>
+        <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
+          🔍 Search Members
+        </label>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by name or phone number..."
+          style={{
+            ...inputStyle,
+            fontSize: '15px',
+            padding: '16px 20px'
+          }}
+        />
+      </div>
+      <div style={{ minWidth: '200px' }}>
+        <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
+          📊 Sort By
+        </label>
+        <select
+          value={sortOption}
+          onChange={(e) => setSortOption(e.target.value)}
+          style={{
+            ...inputStyle,
+            fontSize: '15px',
+            padding: '16px 20px'
+          }}
+        >
+          <option value="name" style={{ backgroundColor: INPUT_DARK }}>A-Z (Name)</option>
+          <option value="newest" style={{ backgroundColor: INPUT_DARK }}>Newest First</option>
+          <option value="oldest" style={{ backgroundColor: INPUT_DARK }}>Oldest First</option>
+        </select>
+      </div>
+    </div>
+    {searchQuery && (
+      <p style={{ marginTop: '10px', color: TEXT_SECONDARY, fontSize: '14px' }}>
+        Found {filteredClients.length} member{filteredClients.length !== 1 ? 's' : ''}
+      </p>
+    )}
+  </div>
+)}
 
 {activeTab === 'clients' ? (
   <>
-
     <div style={{
-  display: 'grid',
-  gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(340px, 1fr))',  // CHANGED: Single column on mobile
-  gap: isMobile ? '12px' : '24px'  // CHANGED
-}}>
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(340px, 1fr))',
+      gap: isMobile ? '12px' : '24px'
+    }}>
           {/* MAPPING OVER FILTERED CLIENTS */}
           {filteredClients.length > 0 ? filteredClients.map(c => (
             <div key={c.id} style={{
@@ -2049,23 +2047,9 @@ const filteredClients = clients.filter(client => {
         <>
           {/* BIN/ARCHIVE VIEW */}
           <div style={{
-            background: CARD_DARK,
-            borderRadius: '16px',
-            padding: '20px',
-            marginBottom: '24px',
-            boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
-            border: `1px solid ${BORDER_DARK}`
-          }}>
-            <h3 style={{ color: TEXT_LIGHT, marginBottom: '10px' }}>🗑️ Archived Members</h3>
-            <p style={{ color: TEXT_SECONDARY, fontSize: '14px' }}>
-              Members who haven't renewed for a long time. You can restore or permanently delete them.
-            </p>
-          </div>
-
-          <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-            gap: '24px'
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(340px, 1fr))',
+            gap: isMobile ? '12px' : '24px'
           }}>
             {filteredClients.length > 0 ? filteredClients.map(c => (
               <div key={c.id} style={{
@@ -3264,8 +3248,8 @@ const filteredClients = clients.filter(client => {
       position: 'fixed',
       bottom: isMobile ? '24px' : '30px',
       right: isMobile ? '24px' : '30px',
-      width: isMobile ? '100px' : '60px',
-      height: isMobile ? '100px' : '60px',
+      width: isMobile ? '40px' : '60px',
+      height: isMobile ? '40px' : '60px',
       borderRadius: '50%',
       background: PRIMARY_GRADIENT,
       color: BG_DARK,
