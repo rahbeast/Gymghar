@@ -1633,65 +1633,70 @@ const filteredClients = clients.filter(client => {
 </div>
 
       {/* CONTENT */}
+      {/* SEARCH BAR - VISIBLE FOR BOTH CLIENTS AND ARCHIVE TABS */}
+      {(activeTab === 'clients' || activeTab === 'bin') && (
+        <div style={{
+          background: CARD_DARK,
+          borderRadius: isMobile ? '10px' : '16px',
+          padding: isMobile ? '12px' : '20px',
+          marginBottom: isMobile ? '12px' : '24px',
+          boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+          border: `1px solid ${BORDER_DARK}`
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            gap: isMobile ? '10px' : '15px',
+            marginBottom: isMobile ? '10px' : '15px',
+            flexWrap: 'wrap',
+            flexDirection: isMobile ? 'column' : 'row'
+          }}>
+            <div style={{ flex: 1, minWidth: isMobile ? '100%' : '200px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
+                🔍 Search Members
+              </label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name or phone number..."
+                style={{
+                  ...inputStyle,
+                  fontSize: '15px',
+                  padding: '16px 20px'
+                }}
+              />
+            </div>
+            {activeTab === 'clients' && (
+              <div style={{ minWidth: '200px' }}>
+                <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
+                  📊 Sort By
+                </label>
+                <select
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    fontSize: '15px',
+                    padding: '16px 20px'
+                  }}
+                >
+                  <option value="name" style={{ backgroundColor: INPUT_DARK }}>A-Z (Name)</option>
+                  <option value="newest" style={{ backgroundColor: INPUT_DARK }}>Newest First</option>
+                  <option value="oldest" style={{ backgroundColor: INPUT_DARK }}>Oldest First</option>
+                </select>
+              </div>
+            )}
+          </div>
+          {searchQuery && (
+            <p style={{ marginTop: '10px', color: TEXT_SECONDARY, fontSize: '14px' }}>
+              Found {filteredClients.length} member{filteredClients.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+      )}
+
 {activeTab === 'clients' ? (
   <>
-    {/* SEARCH BAR */}
-   <div style={{
-  background: CARD_DARK,
-  borderRadius: isMobile ? '10px' : '16px',  // CHANGED
-  padding: isMobile ? '12px' : '20px',  // CHANGED
-  marginBottom: isMobile ? '12px' : '24px',  // CHANGED
-  boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
-  border: `1px solid ${BORDER_DARK}`
-}}>
-  <div style={{ 
-  display: 'flex', 
-  gap: isMobile ? '10px' : '15px',  // CHANGED
-  marginBottom: isMobile ? '10px' : '15px',  // CHANGED
-  flexWrap: 'wrap',
-  flexDirection: isMobile ? 'column' : 'row'  // CHANGED: Stack vertically on mobile
-}}>
-  <div style={{ flex: 1, minWidth: isMobile ? '100%' : '200px' }}>  {/* CHANGED */}
-      <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
-        🔍 Search Members
-      </label>
-      <input
-        type="text"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="Search by name or phone number..."
-        style={{
-          ...inputStyle,
-          fontSize: '15px',
-          padding: '16px 20px'
-        }}
-      />
-    </div>
-    <div style={{ minWidth: '200px' }}>
-      <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', color: TEXT_LIGHT, fontSize: '15px' }}>
-        📊 Sort By
-      </label>
-      <select
-        value={sortOption}
-        onChange={(e) => setSortOption(e.target.value)}
-        style={{
-          ...inputStyle,
-          fontSize: '15px',
-          padding: '16px 20px'
-        }}
-      >
-        <option value="name" style={{ backgroundColor: INPUT_DARK }}>A-Z (Name)</option>
-        <option value="newest" style={{ backgroundColor: INPUT_DARK }}>Newest First</option>
-        <option value="oldest" style={{ backgroundColor: INPUT_DARK }}>Oldest First</option>
-      </select>
-    </div>
-  </div>
-  {searchQuery && (
-    <p style={{ marginTop: '10px', color: TEXT_SECONDARY, fontSize: '14px' }}>
-      Found {filteredClients.length} member{filteredClients.length !== 1 ? 's' : ''}
-    </p>
-  )}
-</div>
 
     <div style={{
   display: 'grid',
