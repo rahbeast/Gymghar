@@ -1347,10 +1347,20 @@ const handleRestoreFromArchive = async (client) => {
 
   // --- MEMBER FILTERING LOGIC ---
 const filteredClients = clients.filter(client => {
+  // First check: Archive tab vs regular tabs
   if (activeTab === 'bin') {
-    return client.isArchived === true;
+    // For archive tab: only show archived members
+    if (client.isArchived !== true) return false;
+    
+    // Then apply search filter
+    const matchesSearch = searchQuery === '' || 
+      client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      client.phone.includes(searchQuery);
+    
+    return matchesSearch;
   }
   
+  // For regular tabs: exclude archived members
   if (client.isArchived === true) return false;
   
   // Handle expiring soon filter
@@ -1362,6 +1372,7 @@ const filteredClients = clients.filter(client => {
     matchesFilter = memberFilter === 'all' || client.status === memberFilter;
   }
   
+  // Apply search filter
   const matchesSearch = searchQuery === '' || 
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.phone.includes(searchQuery);
