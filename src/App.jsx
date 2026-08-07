@@ -49,7 +49,7 @@ const [editFormData, setEditFormData] = useState({
   // --- 1. MEMBERSHIP DATA ---
   const membershipFees = { basic: 2000, premium: 5000, platinum: 9000, annual: 16000 };
   const membershipMonths = { basic: 1, premium: 3, platinum: 6, annual: 12 };
-
+  const membershipDays = { basic: 30, premium: 90, platinum: 180, annual: 365 };
   const [formData, setFormData] = useState({
     name: '', phone: '', email: '', address: '', age: '', gender: '',
     emergencyContact: '', membership: 'basic', startDate: new Date().toISOString().split('T')[0],
@@ -623,7 +623,7 @@ const handleRemoveMemberPhoto = async (memberId, photoUrl) => {
 
   setLoading(true);
   try {
-    const renewalMonths = membershipMonths[renewalPlan];
+    const renewalDays = membershipDays[renewalPlan];
     const renewalFee = membershipFees[renewalPlan];
     
     const today = new Date();
@@ -662,7 +662,7 @@ if (renewalStartOption === 'custom') {
     }
     
     const newEndDate = new Date(newStartDate);
-    newEndDate.setMonth(newEndDate.getMonth() + renewalMonths);
+    newEndDate.setDate(newEndDate.getDate() + renewalDays);
 
     const newTotalFee = (renewalClient.fee || 0) + renewalFee;
 
@@ -809,7 +809,7 @@ const handleViewMemberDetails = (client) => {
   setLoading(true);
   try {
     const endDate = new Date(formData.startDate);
-    endDate.setMonth(endDate.getMonth() + membershipMonths[formData.membership]);
+    endDate.setDate(endDate.getDate() + membershipDays[formData.membership]);
     
     const finalFee = parseInt(formData.fee) || membershipFees[formData.membership];
     const joinDate = formData.startDate; // Store join date
@@ -927,7 +927,7 @@ const handleSaveMemberEdit = async () => {
   try {
     // Calculate new end date if start date or membership changed
     const newEndDate = new Date(editFormData.startDate);
-    newEndDate.setMonth(newEndDate.getMonth() + membershipMonths[editFormData.membership]);
+    newEndDate.setDate(newEndDate.getDate() + membershipDays[editFormData.membership]);
 
     const updatedData = {
       name: editFormData.name,

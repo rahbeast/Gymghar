@@ -87,22 +87,27 @@ const NepaliDatePicker = ({ value, onChange, placeholder = "Select date", disabl
 
   // Handle date selection
   const handleDateSelect = (day) => {
-    try {
-      const nepaliDate = new NepaliDate(
-        currentNepaliDate.getYear(),
-        currentNepaliDate.getMonth(),
-        day
-      );
-      const englishDate = nepaliDate.toJsDate();
-      const formattedDate = englishDate.toISOString().split('T')[0];
-      
-      setSelectedDate(nepaliDate);
-      onChange(formattedDate);
-      setShowCalendar(false);
-    } catch (e) {
-      console.error('Error selecting date:', e);
-    }
-  };
+  try {
+    const nepaliDate = new NepaliDate(
+      currentNepaliDate.getYear(),
+      currentNepaliDate.getMonth(),
+      day
+    );
+    const englishDate = nepaliDate.toJsDate();
+    
+    // Use local date methods instead of toISOString() to avoid timezone shift
+    const year = englishDate.getFullYear();
+    const month = String(englishDate.getMonth() + 1).padStart(2, '0');
+    const dayOfMonth = String(englishDate.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${dayOfMonth}`;
+    
+    setSelectedDate(nepaliDate);
+    onChange(formattedDate);
+    setShowCalendar(false);
+  } catch (e) {
+    console.error('Error selecting date:', e);
+  }
+};
 
   // Navigate months
   const changeMonth = (direction) => {
