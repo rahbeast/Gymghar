@@ -1,5 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import NepaliDate from 'nepali-date-converter';
+export const getDaysInNepaliMonth = (year, month) => {
+  const daysInMonths = {
+    2080: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
+    2081: [31, 32, 31, 32, 31, 30, 30, 29, 30, 29, 30, 30],
+    2082: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
+    2083: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 31],
+    2084: [31, 31, 31, 32, 31, 31, 29, 30, 30, 29, 30, 30],
+    2085: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
+  };
+  
+  return daysInMonths[year]?.[month - 1] || 30;
+};
 
 const NepaliDatePicker = ({ value, onChange, placeholder = "Select date", disabled = false, darkMode = true }) => {
   const [showCalendar, setShowCalendar] = useState(false);
@@ -60,19 +72,7 @@ const NepaliDatePicker = ({ value, onChange, placeholder = "Select date", disabl
     };
   }, [showCalendar]);
 
-  // Get days in Nepali month
-  const getDaysInNepaliMonth = (year, month) => {
-    const daysInMonths = {
-      2080: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
-      2081: [31, 32, 31, 32, 31, 30, 30, 29, 30, 29, 30, 30],
-      2082: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
-      2083: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 31],
-      2084: [31, 31, 31, 32, 31, 31, 29, 30, 30, 29, 30, 30],
-      2085: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30],
-    };
-    
-    return daysInMonths[year]?.[month - 1] || 30;
-  };
+ 
 
   // Get starting day of month
   const getStartDayOfMonth = (year, month) => {

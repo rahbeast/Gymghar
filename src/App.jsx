@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import bcrypt from 'bcryptjs';
 import NepaliDate from 'nepali-date-converter';
-import NepaliDatePicker from './NepaliDatePicker';
+import NepaliDatePicker, { getDaysInNepaliMonth } from './NepaliDatePicker';
 // Assuming gymLogo.jpg is in your public folder or imported correctly
 
 const App = () => {
@@ -49,7 +49,7 @@ const [editFormData, setEditFormData] = useState({
   // --- 1. MEMBERSHIP DATA ---
   const membershipFees = { basic: 2000, premium: 5000, platinum: 9000, annual: 16000 };
   const membershipMonths = { basic: 1, premium: 3, platinum: 6, annual: 12 };
-  const membershipDays = { basic: 30, premium: 90, platinum: 180, annual: 365 };
+  
   const [formData, setFormData] = useState({
     name: '', phone: '', email: '', address: '', age: '', gender: '',
     emergencyContact: '', membership: 'basic', startDate: new Date().toISOString().split('T')[0],
@@ -122,6 +122,30 @@ const getExpiryStatus = (endDate) => {
   } else {
     return { text: `Expired ${Math.abs(days)} days ago`, color: '#ef4444', icon: '❌' };
   }
+};
+const addNepaliMonths = (gregorianDateString, monthsToAdd) => {
+  const [gYear, gMonth, gDay] = gregorianDateString.split('-').map(Number);
+  const localDate = new Date(gYear, gMonth - 1, gDay);
+
+  const nepaliDate = new NepaliDate(localDate);
+  let nepYear = nepaliDate.getYear();
+  let nepMonth = nepaliDate.getMonth(); // 0-indexed
+  const nepDay = nepaliDate.getDate();
+
+  nepMonth += monthsToAdd;
+  nepYear += Math.floor(nepMonth / 12);
+  nepMonth = nepMonth % 12;
+
+  const maxDays = getDaysInNepaliMonth(nepYear, nepMonth + 1);
+  const finalDay = Math.min(nepDay, maxDays);
+
+  const newNepaliDate = new NepaliDate(nepYear, nepMonth, finalDay);
+  const newGregorianDate = newNepaliDate.toJsDate();
+
+  const year = newGregorianDate.getFullYear();
+  const month = String(newGregorianDate.getMonth() + 1).padStart(2, '0');
+  const day = String(newGregorianDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
   // ---------------------------------
 
@@ -623,7 +647,6 @@ const handleRemoveMemberPhoto = async (memberId, photoUrl) => {
 
   setLoading(true);
   try {
-    const renewalDays = membershipDays[renewalPlan];
     const renewalFee = membershipFees[renewalPlan];
     
     const today = new Date();
@@ -661,8 +684,7 @@ if (renewalStartOption === 'custom') {
       }
     }
     
-    const newEndDate = new Date(newStartDate);
-    newEndDate.setDate(newEndDate.getDate() + renewalDays);
+   const newEndDateString = addNepaliMonths(newStartDate, membershipMonths[renewalPlan]);
 
     const newTotalFee = (renewalClient.fee || 0) + renewalFee;
 
@@ -680,12 +702,12 @@ if (renewalStartOption === 'custom') {
 }
 
 const newPayment = {
-  date: paymentDate,  // ✅ FIXED: Uses the appropriate date based on renewal option
+  date: paymentDate,
   amount: renewalFee,
   membership: renewalPlan,
   type: renewalType,
   startDate: newStartDate,
-  endDate: newEndDate.toISOString().split('T')[0]
+  endDate: newEndDateString   // ← changed from: newEndDate.toISOString().split('T')[0]
 };
     const updatedPaymentHistory = [...(renewalClient.paymentHistory || []), newPayment];
 
@@ -694,7 +716,7 @@ const newPayment = {
       .update({
         status: 'active',
         start_date: newStartDate,
-        end_date: newEndDate.toISOString().split('T')[0],
+        end_date: newEndDateString,   // ← changed from: newEndDate.toISOString().split('T')[0]
         membership: renewalPlan,
         fee: newTotalFee,
         payment_history: updatedPaymentHistory
@@ -703,7 +725,7 @@ const newPayment = {
 
     if (error) throw error;
 
-    alert(`Subscription renewed for ${renewalClient.name}!\n\nPlan: ${renewalPlan.toUpperCase()}\nRenewal Fee: Rs ${renewalFee.toLocaleString('en-IN')}\nTotal Revenue: Rs ${newTotalFee.toLocaleString('en-IN')}\nNew Period: ${newStartDate} to ${newEndDate.toISOString().split('T')[0]}`);
+    alert(`Subscription renewed for ${renewalClient.name}!\n\nPlan: ${renewalPlan.toUpperCase()}\nRenewal Fee: Rs ${renewalFee.toLocaleString('en-IN')}\nTotal Revenue: Rs ${newTotalFee.toLocaleString('en-IN')}\nNew Period: ${newStartDate} to ${newEndDateString}`);   // ← changed from: newEndDate.toISOString().split('T')[0]
     setRenewalClient(null);
     
     fetchClients();
@@ -808,8 +830,7 @@ const handleViewMemberDetails = (client) => {
 
   setLoading(true);
   try {
-    const endDate = new Date(formData.startDate);
-    endDate.setDate(endDate.getDate() + membershipDays[formData.membership]);
+   const endDateString = addNepaliMonths(formData.startDate, membershipMonths[formData.membership]);
     
     const finalFee = parseInt(formData.fee) || membershipFees[formData.membership];
     const joinDate = formData.startDate; // Store join date
@@ -822,7 +843,7 @@ const handleViewMemberDetails = (client) => {
       membership: formData.membership,
       type: 'New Membership',
       startDate: formData.startDate,
-      endDate: endDate.toISOString().split('T')[0]
+      endDate: endDateString
     };
 
     const newMember = {
@@ -835,11 +856,11 @@ const handleViewMemberDetails = (client) => {
       emergency_contact: formData.emergencyContact || null,
       membership: formData.membership,
       start_date: formData.startDate,
-      end_date: endDate.toISOString().split('T')[0],
+      end_date: endDateString,
       join_date: joinDate, // Store join date separately
       fee: finalFee,
       discount: 0,
-      status: new Date() <= endDate ? 'active' : 'expired',
+      status: new Date().toISOString().split('T')[0] <= endDateString ? 'active' : 'expired',
       hold_status: 'active',
       payment_history: [initialPayment],
        photo_url: null
@@ -926,8 +947,7 @@ const handleSaveMemberEdit = async () => {
   setLoading(true);
   try {
     // Calculate new end date if start date or membership changed
-    const newEndDate = new Date(editFormData.startDate);
-    newEndDate.setDate(newEndDate.getDate() + membershipDays[editFormData.membership]);
+    const newEndDateString = addNepaliMonths(editFormData.startDate, membershipMonths[editFormData.membership]);
 
     const updatedData = {
       name: editFormData.name,
@@ -939,7 +959,7 @@ const handleSaveMemberEdit = async () => {
       emergency_contact: editFormData.emergencyContact || null,
       membership: editFormData.membership,
       start_date: editFormData.startDate,
-      end_date: newEndDate.toISOString().split('T')[0],
+      end_date: newEndDateString,
       fee: parseInt(editFormData.fee) || membershipFees[editFormData.membership]
     };
 
